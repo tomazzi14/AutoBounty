@@ -11,7 +11,7 @@
     "dotenv": "^16.6.1",
     "ethers": "^6.13.1",
     "express": "^5.2.1",
-    "genlayer-js": "^0.5.0",
+    "genlayer-js": "^0.23.0",
     "viem": "^2.47.5"
   },
   "keywords": [],

@@ -88,3 +88,15 @@ class BountyJudge(gl.Contract):
             "pr_url": self.pr_url,
             "evaluated": self.evaluated,
         }
+
+    @gl.public.view
+    def get_approved(self) -> bool:
+        return self.approved
+
+    @gl.public.view
+    def get_score(self) -> int:
+        return int(self.score)
+
+    @gl.public.view
+    def get_reasoning(self) -> str:
+        return self.reasoning

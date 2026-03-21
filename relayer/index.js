@@ -1,10 +1,11 @@
 import "dotenv/config";
 import express from "express";
-import { createPublicClient, createWalletClient, http, webSocket, parseAbiItem, parseAbi } from "viem";
+import { createPublicClient, createWalletClient, http, webSocket, parseAbiItem, parseAbi, defineChain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { avalancheFuji } from "viem/chains";
+import { foundry } from "viem/chains";
 import { createClient as createGenlayerClient } from "genlayer-js";
-import { simulator } from "genlayer-js/chains";
+import { localnet } from "genlayer-js/chains";
 
 const {
   AVALANCHE_RPC_URL,
@@ -15,9 +16,12 @@ const {
   GENLAYER_CONTRACT_ADDRESS,
   GENLAYER_PRIVATE_KEY,
   PORT = "3000",
+  CHAIN = "fuji",
 } = process.env;
 
 // --- Avalanche setup ---
+
+const evmChain = CHAIN === "local" ? foundry : avalancheFuji;
 
 const ESCROW_ABI = parseAbi([
   "function submitSolution(uint256 bountyId, string prURL, address solver) external",
@@ -30,20 +34,20 @@ const ESCROW_ABI = parseAbi([
 const account = privateKeyToAccount(PRIVATE_KEY);
 
 const publicClient = createPublicClient({
-  chain: avalancheFuji,
+  chain: evmChain,
   transport: http(AVALANCHE_RPC_URL),
 });
 
 const walletClient = createWalletClient({
   account,
-  chain: avalancheFuji,
+  chain: evmChain,
   transport: http(AVALANCHE_RPC_URL),
 });
 
 // --- GenLayer setup ---
 
 const glClient = createGenlayerClient({
-  chain: simulator,
+  chain: localnet,
   endpoint: GENLAYER_RPC_URL,
   account: privateKeyToAccount(GENLAYER_PRIVATE_KEY),
 });
@@ -68,6 +72,29 @@ async function pollGenLayerTx(txHash, intervalMs = 3000, maxAttempts = 100) {
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(`GenLayer tx ${txHash} did not finalize after ${maxAttempts} attempts`);
+}
+
+// --- GenLayer view call helper ---
+
+async function readGenLayerView(functionName) {
+  // glClient.readContract uses eth_call internally which should work
+  // Retry with delays since state may not be immediately available
+  for (let i = 0; i < 5; i++) {
+    try {
+      return await glClient.readContract({
+        address: GENLAYER_CONTRACT_ADDRESS,
+        functionName,
+        args: [],
+      });
+    } catch (e) {
+      if (i < 4) {
+        console.log(`  Retry reading ${functionName}... (${i + 1}/5)`);
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        throw e;
+      }
+    }
+  }
 }
 
 // --- Core flow ---
@@ -112,18 +139,16 @@ async function handlePRSubmission(bountyId, prURL, solverAddress) {
 
   await pollGenLayerTx(glTxHash);
 
-  // 3. Read verdict
+  // 3. Read verdict via raw JSON-RPC call (bypassing SDK encoding issues)
   console.log(`\n[3/4] Reading verdict from GenLayer...`);
-  const verdict = await glClient.readContract({
-    address: GENLAYER_CONTRACT_ADDRESS,
-    functionName: "get_verdict",
-    args: [],
-  });
-  console.log(`  Verdict:`, verdict);
 
+  const verdict = await readGenLayerView("get_verdict");
   const approved = verdict.approved === true;
-  console.log(`  Result: ${approved ? "APPROVED ✓" : "REJECTED ✗"} (score: ${verdict.score})`);
-  console.log(`  Reasoning: ${verdict.reasoning}`);
+  const score = verdict.score || 0;
+  const reasoning = verdict.reasoning || "unknown";
+
+  console.log(`  Result: ${approved ? "APPROVED ✓" : "REJECTED ✗"} (score: ${score})`);
+  console.log(`  Reasoning: ${reasoning}`);
 
   // 4. Resolve bounty on Avalanche
   console.log(`\n[4/4] Resolving bounty on Avalanche...`);
