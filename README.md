@@ -99,13 +99,21 @@ node index.js
 | viem | Avalanche client in the relayer |
 | genlayer-js | GenLayer client in the relayer |
 
-## Deployed Contracts (Avalanche Fuji)
+## Deployed Contracts
+
+### Avalanche Fuji
 
 | Contract | Address |
 |----------|---------|
 | MockUSDC | [`0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d`](https://testnet.snowtrace.io/address/0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d) |
 | BountyEscrow | [`0xF284251509ebcb1AFc111e27dF889703815AeE39`](https://testnet.snowtrace.io/address/0xF284251509ebcb1AFc111e27dF889703815AeE39) |
 | Relayer | [`0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734`](https://testnet.snowtrace.io/address/0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734) |
+
+### GenLayer Bradbury
+
+| Contract | Address |
+|----------|---------|
+| BountyJudge | [`0x0dD12a8cC5441B26ED4a798AE0D1Dc6369fC2516`](https://explorer-bradbury.genlayer.com/contracts/0x0dD12a8cC5441B26ED4a798AE0D1Dc6369fC2516) |
 
 ## Hackathon
 
