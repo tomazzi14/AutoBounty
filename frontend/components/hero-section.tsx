@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ArrowRight, GitPullRequest, CheckCircle2, Cpu, DollarSign } from 'lucide-react'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
+import { useAccount } from 'wagmi'
 
 const terminalLines = [
   { delay: 0,    text: '$ autobounty create --issue https://github.com/org/repo/issues/42 --amount 100', type: 'cmd' },
@@ -63,6 +66,25 @@ const pills = [
 ]
 
 export default function HeroSection() {
+  const { openConnectModal } = useConnectModal()
+  const { isConnected } = useAccount()
+  const router = useRouter()
+
+  const handleLaunchApp = () => {
+    if (isConnected) {
+      router.push('/dashboard')
+    } else {
+      openConnectModal?.()
+    }
+  }
+
+  // Redirect to dashboard once connected
+  useEffect(() => {
+    if (isConnected) {
+      router.push('/dashboard')
+    }
+  }, [isConnected, router])
+
   return (
     <section
       id="product"
@@ -104,13 +126,13 @@ export default function HeroSection() {
 
         {/* CTAs */}
         <div className="opacity-0 animate-fade-up delay-200 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--brand-teal)] text-black font-semibold text-sm hover:bg-[var(--brand-blue)] transition-all duration-200 glow-teal"
+          <button
+            onClick={handleLaunchApp}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--brand-teal)] text-black font-semibold text-sm hover:bg-[var(--brand-blue)] transition-all duration-200 glow-teal cursor-pointer"
           >
             Launch App
             <ArrowRight size={15} />
-          </a>
+          </button>
           <a
             href="#how-it-works"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-white/10 text-white font-medium text-sm hover:border-[var(--brand-teal)]/30 hover:bg-white/5 transition-all duration-200"

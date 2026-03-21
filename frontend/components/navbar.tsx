@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Menu, X } from 'lucide-react'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
+import { useAccount } from 'wagmi'
 
 const navLinks = ['Product', 'How it Works', 'Developers', 'Docs']
 const navIds = ['product', 'how-it-works', 'developers', 'tech-stack']
@@ -11,6 +14,17 @@ const navIds = ['product', 'how-it-works', 'developers', 'tech-stack']
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { openConnectModal } = useConnectModal()
+  const { isConnected } = useAccount()
+  const router = useRouter()
+
+  const handleLaunchApp = () => {
+    if (isConnected) {
+      router.push('/dashboard')
+    } else {
+      openConnectModal?.()
+    }
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -54,12 +68,12 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="hidden md:flex items-center gap-3">
-          <a
-            href="#cta"
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--brand-teal)] text-black hover:bg-[var(--brand-blue)] transition-colors duration-200"
+          <button
+            onClick={handleLaunchApp}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--brand-teal)] text-black hover:bg-[var(--brand-blue)] transition-colors duration-200 cursor-pointer"
           >
             Launch App
-          </a>
+          </button>
         </div>
 
         {/* Mobile toggle */}
@@ -85,13 +99,12 @@ export default function Navbar() {
               {link}
             </a>
           ))}
-          <a
-            href="#cta"
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--brand-teal)] text-black text-center"
-            onClick={() => setMobileOpen(false)}
+          <button
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--brand-teal)] text-black text-center cursor-pointer"
+            onClick={() => { setMobileOpen(false); handleLaunchApp(); }}
           >
             Launch App
-          </a>
+          </button>
         </div>
       )}
     </header>

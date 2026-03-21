@@ -1,6 +1,23 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
 import { ArrowRight, Users } from 'lucide-react'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
+import { useAccount } from 'wagmi'
 
 export default function CtaSection() {
+  const { openConnectModal } = useConnectModal()
+  const { isConnected } = useAccount()
+  const router = useRouter()
+
+  const handleLaunchApp = () => {
+    if (isConnected) {
+      router.push('/dashboard')
+    } else {
+      openConnectModal?.()
+    }
+  }
+
   return (
     <section id="cta" className="py-32 relative overflow-hidden">
       {/* Glow backdrop */}
@@ -29,20 +46,20 @@ export default function CtaSection() {
         </p>
 
         <div className="flex flex-wrap justify-center gap-4">
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-[var(--brand-teal)] text-black font-semibold text-base hover:bg-[var(--brand-blue)] transition-all duration-200 glow-teal"
+          <button
+            onClick={handleLaunchApp}
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-[var(--brand-teal)] text-black font-semibold text-base hover:bg-[var(--brand-blue)] transition-all duration-200 glow-teal cursor-pointer"
           >
             Join as a Company
             <ArrowRight size={18} />
-          </a>
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl border border-white/15 text-white font-semibold text-base hover:border-white/25 hover:bg-white/5 transition-all duration-200"
+          </button>
+          <button
+            onClick={handleLaunchApp}
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl border border-white/15 text-white font-semibold text-base hover:border-white/25 hover:bg-white/5 transition-all duration-200 cursor-pointer"
           >
             <Users size={18} className="text-[var(--brand-teal)]" />
             Join as a Dev
-          </a>
+          </button>
         </div>
       </div>
     </section>
