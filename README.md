@@ -8,8 +8,8 @@ GenLayer validators evaluate PRs against issues. Avalanche handles escrow. No hu
 ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────┐     ┌──────────────┐
 │  GitHub Repo │     │  Avalanche   │     │        GenLayer           │     │  Avalanche   │
 │              │     │              │     │                          │     │              │
-│  Issue #42   │────>│ Create Bounty│────>│  5 LLMs evaluate PR vs  │────>│ Release AVAX │
-│  + PR #43    │     │ (lock AVAX)  │     │  issue independently    │     │ to solver    │
+│  Issue #42   │────>│ Create Bounty│────>│  5 LLMs evaluate PR vs  │────>│ Release mUSDC│
+│  + PR #43    │     │ (lock mUSDC) │     │  issue independently    │     │ to solver    │
 └──────────────┘     └──────────────┘     └──────────────────────────┘     └──────────────┘
 ```
 
@@ -25,9 +25,10 @@ GenLayer is the only blockchain that can read arbitrary web pages on-chain, reas
 
 | Component | Chain | Description |
 |-----------|-------|-------------|
-| `BountyEscrow.sol` | Avalanche Fuji | Solidity contract. Locks AVAX, emits events, releases payment. |
-| `BountyJudge.py` | GenLayer Bradbury | Intelligent Contract. Scrapes GitHub API, evaluates PR via LLM consensus. |
-| `relayer/index.js` | Off-chain | Bridges events between Avalanche and GenLayer. ~100 lines of Node.js. |
+| `BountyEscrow.sol` | Avalanche Fuji | Solidity contract. Locks mUSDC in escrow, releases payment based on verdict. |
+| `MockUSDC.sol` | Avalanche Fuji | Freely mintable ERC-20 (6 decimals) for testnet bounties. |
+| `BountyJudge.py` | GenLayer Bradbury | Intelligent Contract. Fetches GitHub API data, evaluates PR via Optimistic Democracy consensus (Equivalence Principle Pattern 4: `prompt_non_comparative`). |
+| `relayer/index.js` | Off-chain | Bridges events between Avalanche and GenLayer. Submits solutions, triggers evaluation, resolves bounties. |
 
 ## Setup
 
@@ -42,9 +43,18 @@ GenLayer is the only blockchain that can read arbitrary web pages on-chain, reas
 
 ```bash
 npm install -g genlayer
-genlayer init          # select your LLM provider
-genlayer up            # Studio runs at localhost:8080
+genlayer init                        # select your LLM provider
+genlayer up                          # Studio runs at localhost:8080 (local dev)
 ```
+
+Deploy to Testnet Bradbury:
+
+```bash
+genlayer network testnet-bradbury    # switch to public testnet
+genlayer deploy contracts/genlayer/BountyJudge.py
+```
+
+> **Consensus model:** GenLayer uses Optimistic Democracy by default. When `BountyJudge` calls `prompt_non_comparative` (Equivalence Principle Pattern 4), the leader node evaluates the PR, then validators independently verify whether the verdict is reasonable. If a validator disagrees, an appeal round kicks in automatically. No extra code needed.
 
 ### Avalanche (Solidity)
 
@@ -58,10 +68,16 @@ forge test
 Deploy to Fuji:
 
 ```bash
+# Deploy MockUSDC first
+forge create --rpc-url https://api.avax-test.network/ext/bc/C/rpc \
+  --private-key $PK \
+  src/MockUSDC.sol:MockUSDC
+
+# Deploy BountyEscrow with relayer address + mUSDC address
 forge create --rpc-url https://api.avax-test.network/ext/bc/C/rpc \
   --private-key $PK \
   src/BountyEscrow.sol:BountyEscrow \
-  --constructor-args $RELAYER_ADDRESS
+  --constructor-args $RELAYER_ADDRESS $MUSDC_ADDRESS
 ```
 
 ### Relayer
@@ -78,7 +94,7 @@ node index.js
 | Tech | Role |
 |------|------|
 | GenLayer (Bradbury testnet) | AI consensus — web scraping + LLM evaluation + Optimistic Democracy |
-| Avalanche (Fuji testnet) | Escrow — lock/release AVAX via Solidity |
+| Avalanche (Fuji testnet) | Escrow — lock/release mUSDC via Solidity |
 | Foundry | Solidity toolchain — build, test, deploy |
 | viem | Avalanche client in the relayer |
 | genlayer-js | GenLayer client in the relayer |
