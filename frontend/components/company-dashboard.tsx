@@ -5,6 +5,8 @@ import { Plus, Loader2, Wallet, Github, Building2, Bot, User } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAccount } from 'wagmi'
+import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBountyStore } from '@/lib/bounty-store'
 import BountyList from './bounty-list'
 import AgentModeContent from './agent-mode-content'
@@ -12,8 +14,7 @@ import AgentModeContent from './agent-mode-content'
 export default function CompanyDashboard() {
   const [githubUrl, setGithubUrl] = useState('')
   const [amount, setAmount] = useState('')
-  const [walletConnected, setWalletConnected] = useState(false)
-  const [mockWallet] = useState('0x1234...abcd')
+  const { address, isConnected: walletConnected } = useAccount()
   const [solverMode, setSolverMode] = useState<'human' | 'agent'>('human')
 
   const { createBounty, isCreating } = useBountyStore()
@@ -24,8 +25,8 @@ export default function CompanyDashboard() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!canSubmit) return
-    await createBounty({ githubIssueUrl: githubUrl, amountMUSDC: Number(amount) }, mockWallet)
+    if (!canSubmit || !address) return
+    await createBounty({ githubIssueUrl: githubUrl, amountMUSDC: Number(amount) }, address)
     setGithubUrl('')
     setAmount('')
   }
@@ -87,19 +88,23 @@ export default function CompanyDashboard() {
                 {walletConnected ? (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--brand-teal)]/30 bg-[var(--brand-glow-teal)]">
                     <Wallet className="w-4 h-4 text-[var(--brand-teal)]" />
-                    <span className="text-sm font-mono text-[var(--brand-teal)]">{mockWallet}</span>
+                    <span className="text-sm font-mono text-[var(--brand-teal)]">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
                     <span className="ml-auto text-xs text-[var(--brand-teal)]">Connected</span>
                   </div>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setWalletConnected(true)}
-                    className="w-full border-white/10 bg-white/5 text-white hover:bg-[var(--brand-glow-teal)] hover:border-[var(--brand-teal)]/30 hover:text-[var(--brand-teal)]"
-                  >
-                    <Wallet className="w-4 h-4 mr-2" />
-                    Connect Wallet
-                  </Button>
+                  <ConnectButton.Custom>
+                    {({ openConnectModal }) => (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openConnectModal}
+                        className="w-full border-white/10 bg-white/5 text-white hover:bg-[var(--brand-glow-teal)] hover:border-[var(--brand-teal)]/30 hover:text-[var(--brand-teal)]"
+                      >
+                        <Wallet className="w-4 h-4 mr-2" />
+                        Connect Wallet
+                      </Button>
+                    )}
+                  </ConnectButton.Custom>
                 )}
               </div>
 

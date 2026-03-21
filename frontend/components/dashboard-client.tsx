@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowLeft } from 'lucide-react'
+import { ConnectButton } from '@rainbow-me/rainbowkit'
 import RoleToggle from './role-toggle'
 import CompanyDashboard from './company-dashboard'
 import DeveloperDashboard from './developer-dashboard'
@@ -33,10 +34,7 @@ export default function DashboardClient() {
               priority
             />
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--brand-teal)]/30 bg-[var(--brand-glow-teal)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-teal)] animate-pulse" />
-            <span className="text-xs font-medium text-[var(--brand-teal)]">Avalanche</span>
-          </div>
+          <ConnectButton chainStatus="icon" showBalance={false} />
         </div>
       </header>
 
