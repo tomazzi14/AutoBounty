@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { avalancheFuji } from "viem/chains";
 import { foundry } from "viem/chains";
 import { createClient as createGenlayerClient } from "genlayer-js";
-import { localnet } from "genlayer-js/chains";
+import { localnet, testnetBradbury } from "genlayer-js/chains";
 
 const {
   AVALANCHE_RPC_URL,
@@ -46,17 +46,20 @@ const walletClient = createWalletClient({
 
 // --- GenLayer setup ---
 
+const glChain = CHAIN === "local" ? localnet : testnetBradbury;
+
 const glClient = createGenlayerClient({
-  chain: localnet,
+  chain: glChain,
   endpoint: GENLAYER_RPC_URL,
   account: privateKeyToAccount(GENLAYER_PRIVATE_KEY),
 });
 
 // --- GenLayer polling ---
 
-async function pollGenLayerTx(txHash, intervalMs = 3000, maxAttempts = 100) {
+async function pollGenLayerTx(txHash, intervalMs = 10000, maxAttempts = 60) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
+      // Try both receipt methods
       const receipt = await glClient.request({
         method: "eth_getTransactionReceipt",
         params: [txHash],
@@ -65,13 +68,40 @@ async function pollGenLayerTx(txHash, intervalMs = 3000, maxAttempts = 100) {
         console.log(`  GenLayer tx finalized: ${txHash}`);
         return receipt;
       }
+      if (receipt) {
+        console.log(`  GenLayer tx status: ${receipt.status} (${i + 1}/${maxAttempts})`);
+      }
     } catch (e) {
-      // tx not ready yet
+      // Also try via raw RPC
+      try {
+        const res = await fetch(GENLAYER_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "gen_getTransactionReceipt",
+            params: [txHash],
+            id: 1,
+          }),
+        });
+        const json = await res.json();
+        if (json.result) {
+          const statusName = json.result.status_name;
+          console.log(`  GenLayer tx status: ${statusName} (${i + 1}/${maxAttempts})`);
+          if (statusName === "ACCEPTED" || statusName === "FINALIZED") {
+            console.log(`  GenLayer tx finalized: ${txHash}`);
+            return json.result;
+          }
+        }
+      } catch (e2) {
+        // ignore
+      }
     }
-    console.log(`  Waiting for GenLayer consensus... (${i + 1}/${maxAttempts})`);
+    if (i === 0) console.log(`  Waiting for Bradbury consensus (can take 2-10 min)...`);
+    else console.log(`  Still waiting... (${i + 1}/${maxAttempts})`);
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error(`GenLayer tx ${txHash} did not finalize after ${maxAttempts} attempts`);
+  throw new Error(`GenLayer tx ${txHash} did not finalize after ${maxAttempts * intervalMs / 1000}s`);
 }
 
 // --- GenLayer view call helper ---
