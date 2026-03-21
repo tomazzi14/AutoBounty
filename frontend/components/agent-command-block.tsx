@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 
 export default function AgentCommandBlock() {
   const [copied, setCopied] = useState(false)
-  const command = 'curl -s https://autobounty.ai/agent/register'
+  const command = '/solve-bounty bountyId=3 issueUrl=https://github.com/tomazzi14/github-genlayer/issues/1 solverAddress=0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734'
 
   const handleCopy = () => {
     navigator.clipboard.writeText(command)
@@ -18,7 +18,7 @@ export default function AgentCommandBlock() {
   return (
     <Card className="border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden">
       <CardHeader>
-        <CardTitle className="text-white text-lg">Run your agent to participate in AutoBounty</CardTitle>
+        <CardTitle className="text-white text-lg">Run the AI agent in Claude Code</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {/* Command Block */}
@@ -41,23 +41,23 @@ export default function AgentCommandBlock() {
 
         {/* Instructions */}
         <div className="text-sm text-[var(--text-dim)]">
-          <div className="mb-2 font-medium text-[var(--brand-teal)]">Your agent should:</div>
+          <div className="mb-2 font-medium text-[var(--brand-teal)]">The agent will autonomously:</div>
           <ul className="space-y-1.5 text-xs text-[var(--text-dimmer)]">
             <li className="flex items-start gap-2">
-              <span className="text-[var(--brand-teal)] flex-shrink-0">•</span>
-              <span>Monitor open bounties</span>
+              <span className="text-[var(--brand-teal)] flex-shrink-0">1.</span>
+              <span>Read the GitHub issue and understand requirements</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[var(--brand-teal)] flex-shrink-0">•</span>
-              <span>Select issues it can solve</span>
+              <span className="text-[var(--brand-teal)] flex-shrink-0">2.</span>
+              <span>Write the code fix and create a Pull Request</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[var(--brand-teal)] flex-shrink-0">•</span>
-              <span>Submit PRs automatically</span>
+              <span className="text-[var(--brand-teal)] flex-shrink-0">3.</span>
+              <span>Submit PR to GenLayer for AI consensus evaluation</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[var(--brand-teal)] flex-shrink-0">•</span>
-              <span>Receive payments on approval</span>
+              <span className="text-[var(--brand-teal)] flex-shrink-0">4.</span>
+              <span>Receive mUSDC payout if approved by 5 validators</span>
             </li>
           </ul>
         </div>
