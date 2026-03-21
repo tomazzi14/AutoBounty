@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Loader2, Wallet, Github, Building2, Bot, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAccount } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { parseUnits } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBountyStore } from '@/lib/bounty-store'
+import { ESCROW_ADDRESS, USDC_ADDRESS, ESCROW_ABI, USDC_ABI } from '@/lib/contracts'
 import BountyList from './bounty-list'
 import AgentModeContent from './agent-mode-content'
 
@@ -16,19 +18,64 @@ export default function CompanyDashboard() {
   const [amount, setAmount] = useState('')
   const { address, isConnected: walletConnected } = useAccount()
   const [solverMode, setSolverMode] = useState<'human' | 'agent'>('human')
+  const [txStep, setTxStep] = useState<'idle' | 'approving' | 'creating' | 'done'>('idle')
 
-  const { createBounty, isCreating } = useBountyStore()
+  const { createBounty, fetchBounties, isCreating } = useBountyStore()
+
+  // Approve USDC
+  const { writeContract: writeApprove, data: approveHash } = useWriteContract()
+  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveHash })
+
+  // Create Bounty
+  const { writeContract: writeCreate, data: createHash } = useWriteContract()
+  const { isSuccess: createConfirmed } = useWaitForTransactionReceipt({ hash: createHash })
+
+  // Fetch bounties on mount
+  useEffect(() => { fetchBounties() }, [fetchBounties])
+
+  // Chain: after approve confirmed, create bounty
+  useEffect(() => {
+    if (approveConfirmed && txStep === 'approving') {
+      setTxStep('creating')
+      const amountRaw = parseUnits(amount, 6)
+      writeCreate({
+        address: ESCROW_ADDRESS,
+        abi: ESCROW_ABI,
+        functionName: 'createBounty',
+        args: [githubUrl, amountRaw],
+      })
+    }
+  }, [approveConfirmed, txStep])
+
+  // Chain: after create confirmed, update store
+  useEffect(() => {
+    if (createConfirmed && txStep === 'creating' && address) {
+      setTxStep('done')
+      createBounty({ githubIssueUrl: githubUrl, amountMUSDC: Number(amount) }, address)
+      setGithubUrl('')
+      setAmount('')
+      setTimeout(() => setTxStep('idle'), 2000)
+    }
+  }, [createConfirmed, txStep])
 
   const isValidGithubUrl = githubUrl.match(/github\.com\/[^/]+\/[^/]+\/issues\/\d+/)
   const isValidAmount = Number(amount) > 0
-  const canSubmit = walletConnected && isValidGithubUrl && isValidAmount && !isCreating
+  const isBusy = txStep !== 'idle' && txStep !== 'done'
+  const canSubmit = walletConnected && isValidGithubUrl && isValidAmount && !isBusy
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!canSubmit || !address) return
-    await createBounty({ githubIssueUrl: githubUrl, amountMUSDC: Number(amount) }, address)
-    setGithubUrl('')
-    setAmount('')
+
+    setTxStep('approving')
+    const amountRaw = parseUnits(amount, 6)
+
+    writeApprove({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: 'approve',
+      args: [ESCROW_ADDRESS, amountRaw],
+    })
   }
 
   return (
@@ -160,10 +207,19 @@ export default function CompanyDashboard() {
                 disabled={!canSubmit}
                 className="w-full bg-[var(--brand-teal)] text-black font-semibold hover:bg-[var(--brand-blue)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreating ? (
+                {txStep === 'approving' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Approving mUSDC...
+                  </>
+                ) : txStep === 'creating' ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Creating Bounty...
+                  </>
+                ) : txStep === 'done' ? (
+                  <>
+                    ✓ Bounty Created!
                   </>
                 ) : (
                   <>

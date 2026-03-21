@@ -1,13 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { User, Bot } from 'lucide-react'
 import BountyList from './bounty-list'
 import AgentModeContent from './agent-mode-content'
 import { Card } from '@/components/ui/card'
+import { useBountyStore } from '@/lib/bounty-store'
 
 export default function DeveloperDashboard() {
   const [solverType, setSolverType] = useState<'human' | 'agent'>('human')
+  const { fetchBounties } = useBountyStore()
+
+  useEffect(() => { fetchBounties() }, [fetchBounties])
 
   return (
     <div className="space-y-6">
