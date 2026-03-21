@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 
 export default function AgentCommandBlock() {
   const [copied, setCopied] = useState(false)
-  const command = '/solve-bounty bountyId=3 issueUrl=https://github.com/tomazzi14/github-genlayer/issues/1 solverAddress=0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734'
+  const command = '/agent-run bountyId=3 issueUrl=https://github.com/tomazzi14/github-genlayer/issues/1 solverAddress=0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734'
 
   const handleCopy = () => {
     navigator.clipboard.writeText(command)
