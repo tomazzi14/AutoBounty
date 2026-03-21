@@ -6,100 +6,105 @@ import "../src/BountyEscrow.sol";
 
 contract BountyEscrowTest is Test {
     BountyEscrow escrow;
-    address owner = address(this);
-    address relayer = address(0xBEEF);
-    address sponsor = address(0xCAFE);
-    address reporter = address(0xDEAD);
+    address relayerAddr = address(0xBEEF);
+    address creator = address(0xCAFE);
+    address solver = address(0xDEAD);
 
     function setUp() public {
-        escrow = new BountyEscrow(relayer);
-        vm.deal(sponsor, 10 ether);
-        vm.deal(reporter, 0);
+        escrow = new BountyEscrow(relayerAddr);
+        vm.deal(creator, 10 ether);
+        vm.deal(solver, 1 ether);
     }
 
     function test_createBounty() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
-        assertEq(bountyId, 0);
-        (address s, uint256 pool, bool active) = escrow.bounties(bountyId);
-        assertEq(s, sponsor);
-        assertEq(pool, 1 ether);
-        assertTrue(active);
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
+        (uint256 id, address c,,, uint256 amount,,) = escrow.bounties(0);
+        assertEq(id, 0);
+        assertEq(c, creator);
+        assertEq(amount, 1 ether);
     }
 
-    function test_releasePayout() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
-
-        vm.prank(relayer);
-        escrow.releasePayout(bountyId, reporter, 0.5 ether);
-
-        assertEq(reporter.balance, 0.5 ether);
-        (, uint256 pool,) = escrow.bounties(bountyId);
-        assertEq(pool, 0.5 ether);
+    function test_createBounty_revert_noValue() public {
+        vm.prank(creator);
+        vm.expectRevert("Must send AVAX");
+        escrow.createBounty{value: 0}("https://github.com/org/repo/issues/1");
     }
 
-    function test_releasePayout_revert_notRelayer() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
+    function test_submitSolution() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-        vm.prank(sponsor);
-        vm.expectRevert(BountyEscrow.OnlyRelayer.selector);
-        escrow.releasePayout(bountyId, reporter, 0.5 ether);
+        vm.prank(solver);
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/2");
+
+        (,,,,, address s, BountyEscrow.Status status) = escrow.bounties(0);
+        assertEq(s, solver);
+        assertEq(uint(status), uint(BountyEscrow.Status.Submitted));
     }
 
-    function test_releasePayout_revert_alreadyPaid() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 2 ether}();
+    function test_submitSolution_revert_notOpen() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-        vm.startPrank(relayer);
-        escrow.releasePayout(bountyId, reporter, 0.5 ether);
+        vm.prank(solver);
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/2");
 
-        vm.expectRevert(BountyEscrow.AlreadyPaid.selector);
-        escrow.releasePayout(bountyId, reporter, 0.5 ether);
-        vm.stopPrank();
+        vm.prank(solver);
+        vm.expectRevert("Bounty not open");
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/3");
     }
 
-    function test_releasePayout_revert_insufficientPool() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
+    function test_resolveBounty_approved() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-        vm.prank(relayer);
-        vm.expectRevert(BountyEscrow.InsufficientPool.selector);
-        escrow.releasePayout(bountyId, reporter, 2 ether);
+        vm.prank(solver);
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/2");
+
+        uint256 solverBefore = solver.balance;
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(0, true);
+
+        assertEq(solver.balance, solverBefore + 1 ether);
+        (,,,,,, BountyEscrow.Status status) = escrow.bounties(0);
+        assertEq(uint(status), uint(BountyEscrow.Status.Approved));
     }
 
-    function test_closeBounty() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
+    function test_resolveBounty_rejected() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-        uint256 balanceBefore = sponsor.balance;
-        vm.prank(sponsor);
-        escrow.closeBounty(bountyId);
+        vm.prank(solver);
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/2");
 
-        assertEq(sponsor.balance, balanceBefore + 1 ether);
-        (,, bool active) = escrow.bounties(bountyId);
-        assertFalse(active);
+        uint256 creatorBefore = creator.balance;
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(0, false);
+
+        assertEq(creator.balance, creatorBefore + 1 ether);
+        (,,,,,, BountyEscrow.Status status) = escrow.bounties(0);
+        assertEq(uint(status), uint(BountyEscrow.Status.Rejected));
     }
 
-    function test_closeBounty_revert_notSponsor() public {
-        vm.prank(sponsor);
-        uint256 bountyId = escrow.createBounty{value: 1 ether}();
+    function test_resolveBounty_revert_notRelayer() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-        vm.prank(reporter);
-        vm.expectRevert("Not sponsor");
-        escrow.closeBounty(bountyId);
+        vm.prank(solver);
+        escrow.submitSolution(0, "https://github.com/org/repo/pull/2");
+
+        vm.prank(creator);
+        vm.expectRevert("Only relayer");
+        escrow.resolveBounty(0, true);
     }
 
-    function test_setRelayer() public {
-        address newRelayer = address(0x1234);
-        escrow.setRelayer(newRelayer);
-        assertEq(escrow.relayer(), newRelayer);
-    }
+    function test_resolveBounty_revert_notSubmitted() public {
+        vm.prank(creator);
+        escrow.createBounty{value: 1 ether}("https://github.com/org/repo/issues/1");
 
-    function test_setRelayer_revert_notOwner() public {
-        vm.prank(sponsor);
-        vm.expectRevert(BountyEscrow.OnlyOwner.selector);
-        escrow.setRelayer(address(0x1234));
+        vm.prank(relayerAddr);
+        vm.expectRevert("Bounty not submitted");
+        escrow.resolveBounty(0, true);
     }
 }

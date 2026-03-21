@@ -1,93 +1,47 @@
-import json
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
+import json
+import typing
 
 
 @gl.contract
 class BountyJudge:
-    """
-    GenLayer intelligent contract that evaluates bug bounty submissions.
-    Uses AI equivalence principle to judge whether a reported vulnerability is valid.
-    """
-
-    bounties: TreeMap[str, dict]
-    owner: Address
+    verdicts: TreeMap[str, str]
 
     def __init__(self):
-        self.owner = gl.message.sender
-        self.bounties = TreeMap[str, dict]()
+        self.verdicts = TreeMap[str, str]()
 
     @gl.public.write
-    def create_bounty(self, bounty_id: str, description: str, scope: str, severity_levels: str):
-        """Register a new bounty for judging."""
-        assert gl.message.sender == self.owner, "Only owner can create bounties"
-        assert bounty_id not in self.bounties, "Bounty already exists"
+    def evaluate(self, issue_url: str, pr_url: str):
+        issue_api = issue_url.replace("github.com", "api.github.com/repos").replace("/issues/", "/issues/")
+        pr_api = pr_url.replace("github.com", "api.github.com/repos").replace("/pull/", "/pulls/")
+        headers = {"Accept": "application/vnd.github.v3+json"}
 
-        self.bounties[bounty_id] = {
-            "description": description,
-            "scope": scope,
-            "severity_levels": severity_levels,
-            "status": "active",
-            "submissions": [],
-        }
+        issue_data = gl.nondet.web.get(issue_api, headers=headers)
+        pr_data = gl.nondet.web.get(pr_api, headers=headers)
+        pr_files_data = gl.nondet.web.get(pr_api + "/files", headers=headers)
 
-    @gl.public.write
-    def submit_report(self, bounty_id: str, reporter: str, report: str) -> None:
-        """Submit a vulnerability report for evaluation."""
-        assert bounty_id in self.bounties, "Bounty does not exist"
-        assert self.bounties[bounty_id]["status"] == "active", "Bounty is not active"
+        task = (
+            f"Evaluate whether this Pull Request resolves the GitHub issue.\n\n"
+            f"ISSUE:\n{issue_data}\n\n"
+            f"PULL REQUEST:\n{pr_data}\n\n"
+            f"FILES CHANGED:\n{pr_files_data}\n\n"
+            f"Check the following:\n"
+            f"1. Does the PR title/description address the issue requirements?\n"
+            f"2. Do the changed files relate to the issue?\n"
+            f"3. Are CI checks passing?\n\n"
+            f"Respond with JSON: {{\"approved\": bool, \"score\": 0-10, \"reasoning\": \"brief explanation\"}}"
+        )
 
-        submission = {
-            "reporter": reporter,
-            "report": report,
-            "verdict": None,
-            "severity": None,
-        }
-        self.bounties[bounty_id]["submissions"].append(submission)
+        criteria = (
+            "The output must be valid JSON with exactly three fields: "
+            "\"approved\" (boolean), \"score\" (integer 0-10), and \"reasoning\" (short string). "
+            "The verdict should be reasonable given the issue requirements and PR changes."
+        )
 
-    @gl.public.write
-    def judge_submission(self, bounty_id: str, submission_index: int) -> str:
-        """Use AI equivalence principle to evaluate a submission."""
-        assert bounty_id in self.bounties, "Bounty does not exist"
-        bounty = self.bounties[bounty_id]
-        assert submission_index < len(bounty["submissions"]), "Invalid submission index"
-
-        submission = bounty["submissions"][submission_index]
-
-        prompt = f"""You are a security expert evaluating a bug bounty submission.
-
-Bounty Description: {bounty['description']}
-Scope: {bounty['scope']}
-Severity Levels: {bounty['severity_levels']}
-
-Submitted Report:
-{submission['report']}
-
-Evaluate this submission and respond with a JSON object:
-{{
-    "is_valid": true/false,
-    "severity": "critical" | "high" | "medium" | "low" | "informational",
-    "reasoning": "brief explanation"
-}}
-"""
-        result = gl.exec_prompt(prompt)
-        parsed = json.loads(result)
-
-        submission["verdict"] = parsed["is_valid"]
-        submission["severity"] = parsed["severity"]
-        bounty["submissions"][submission_index] = submission
-
-        return result
+        result = gl.eq_principle.prompt_non_comparative(task=task, criteria=criteria)
+        self.verdicts[pr_url] = result
 
     @gl.public.view
-    def get_bounty(self, bounty_id: str) -> dict:
-        """Get bounty details including submissions."""
-        assert bounty_id in self.bounties, "Bounty does not exist"
-        return self.bounties[bounty_id]
-
-    @gl.public.view
-    def get_verdict(self, bounty_id: str, submission_index: int) -> dict:
-        """Get the verdict for a specific submission."""
-        assert bounty_id in self.bounties, "Bounty does not exist"
-        bounty = self.bounties[bounty_id]
-        assert submission_index < len(bounty["submissions"]), "Invalid submission index"
-        return bounty["submissions"][submission_index]
+    def get_verdict(self, pr_url: str) -> str:
+        return self.verdicts[pr_url]

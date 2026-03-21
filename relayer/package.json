@@ -8,8 +8,12 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "ethers": "^6.13.1",
-    "genlayer-js": "^0.5.0"
-  }
+    "genlayer-js": "^0.5.0",
+    "viem": "^2.47.5"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

@@ -1,95 +1,78 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title BountyEscrow
-/// @notice Holds bounty funds in escrow and releases them based on relayer-forwarded verdicts from GenLayer.
 contract BountyEscrow {
-    struct Bounty {
-        address sponsor;
-        uint256 pool;
-        bool active;
-        mapping(address => bool) paid;
-    }
+    enum Status { Open, Submitted, Approved, Rejected }
 
-    address public owner;
-    address public relayer;
-    uint256 public nextBountyId;
+    struct Bounty {
+        uint256 id;
+        address creator;
+        string issueURL;
+        string prURL;
+        uint256 amount;
+        address solver;
+        Status status;
+    }
 
     mapping(uint256 => Bounty) public bounties;
+    uint256 public bountyCount;
+    address public relayer;
 
-    event BountyCreated(uint256 indexed bountyId, address indexed sponsor, uint256 pool);
-    event PayoutReleased(uint256 indexed bountyId, address indexed reporter, uint256 amount);
-    event BountyClosed(uint256 indexed bountyId);
-
-    error OnlyOwner();
-    error OnlyRelayer();
-    error BountyNotActive();
-    error InsufficientPool();
-    error AlreadyPaid();
-    error TransferFailed();
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
-        _;
-    }
+    event BountyCreated(uint256 indexed bountyId, address indexed creator, string issueURL, uint256 amount);
+    event SolutionSubmitted(uint256 indexed bountyId, address indexed solver, string prURL, string issueURL);
+    event BountyResolved(uint256 indexed bountyId, bool approved);
 
     modifier onlyRelayer() {
-        if (msg.sender != relayer) revert OnlyRelayer();
+        require(msg.sender == relayer, "Only relayer");
         _;
     }
 
     constructor(address _relayer) {
-        owner = msg.sender;
         relayer = _relayer;
     }
 
-    /// @notice Create a new bounty with attached ETH as the reward pool.
-    function createBounty() external payable returns (uint256 bountyId) {
-        bountyId = nextBountyId++;
-        Bounty storage b = bounties[bountyId];
-        b.sponsor = msg.sender;
-        b.pool = msg.value;
-        b.active = true;
-        emit BountyCreated(bountyId, msg.sender, msg.value);
+    /// @notice Create a bounty with AVAX as escrow.
+    function createBounty(string calldata issueURL) external payable {
+        require(msg.value > 0, "Must send AVAX");
+        uint256 id = bountyCount++;
+        bounties[id] = Bounty({
+            id: id,
+            creator: msg.sender,
+            issueURL: issueURL,
+            prURL: "",
+            amount: msg.value,
+            solver: address(0),
+            status: Status.Open
+        });
+        emit BountyCreated(id, msg.sender, issueURL, msg.value);
     }
 
-    /// @notice Called by the relayer to release payout after GenLayer verdict.
-    /// @param bountyId The bounty to pay from.
-    /// @param reporter The address of the valid reporter.
-    /// @param amount The payout amount in wei.
-    function releasePayout(uint256 bountyId, address reporter, uint256 amount) external onlyRelayer {
+    /// @notice Submit a PR solution to an open bounty.
+    function submitSolution(uint256 bountyId, string calldata prURL) external {
         Bounty storage b = bounties[bountyId];
-        if (!b.active) revert BountyNotActive();
-        if (amount > b.pool) revert InsufficientPool();
-        if (b.paid[reporter]) revert AlreadyPaid();
-
-        b.paid[reporter] = true;
-        b.pool -= amount;
-
-        (bool success,) = reporter.call{value: amount}("");
-        if (!success) revert TransferFailed();
-
-        emit PayoutReleased(bountyId, reporter, amount);
+        require(b.amount > 0, "Bounty does not exist");
+        require(b.status == Status.Open, "Bounty not open");
+        b.solver = msg.sender;
+        b.prURL = prURL;
+        b.status = Status.Submitted;
+        emit SolutionSubmitted(bountyId, msg.sender, prURL, b.issueURL);
     }
 
-    /// @notice Sponsor can close their bounty and withdraw remaining funds.
-    function closeBounty(uint256 bountyId) external {
+    /// @notice Resolve a bounty based on GenLayer verdict.
+    function resolveBounty(uint256 bountyId, bool approved) external onlyRelayer {
         Bounty storage b = bounties[bountyId];
-        require(msg.sender == b.sponsor, "Not sponsor");
-        if (!b.active) revert BountyNotActive();
+        require(b.amount > 0, "Bounty does not exist");
+        require(b.status == Status.Submitted, "Bounty not submitted");
 
-        b.active = false;
-        uint256 remaining = b.pool;
-        b.pool = 0;
-
-        (bool success,) = b.sponsor.call{value: remaining}("");
-        if (!success) revert TransferFailed();
-
-        emit BountyClosed(bountyId);
-    }
-
-    /// @notice Update the relayer address.
-    function setRelayer(address _relayer) external onlyOwner {
-        relayer = _relayer;
+        if (approved) {
+            b.status = Status.Approved;
+            (bool sent,) = b.solver.call{value: b.amount}("");
+            require(sent, "Transfer failed");
+        } else {
+            b.status = Status.Rejected;
+            (bool sent,) = b.creator.call{value: b.amount}("");
+            require(sent, "Transfer failed");
+        }
+        emit BountyResolved(bountyId, approved);
     }
 }

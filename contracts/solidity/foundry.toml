@@ -4,5 +4,8 @@ out = "out"
 libs = ["lib"]
 solc = "0.8.20"
 
-[fmt]
-line_length = 120
+[rpc_endpoints]
+fuji = "https://api.avax-test.network/ext/bc/C/rpc"
+
+[etherscan]
+fuji = { key = "${SNOWTRACE_API_KEY}", url = "https://api-testnet.snowtrace.io/api" }
