@@ -12,7 +12,8 @@ contracts/solidity/lib/
 # OS
 .DS_Store
 Thumbs.db
-.claude/
+.claude/worktrees/
+.claude/settings*
 
 # IDE
 .vscode/
