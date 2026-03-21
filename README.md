@@ -1,40 +1,93 @@
 # AutoBounty
 
-Decentralized bug bounty platform combining Solidity escrow contracts with GenLayer intelligent contracts for automated vulnerability judging.
+Automated GitHub bounty verification using decentralized AI consensus.
+
+GenLayer validators evaluate PRs against issues. Avalanche handles escrow. No human reviewers. Minutes, not weeks.
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────────────────┐     ┌──────────────┐
+│  GitHub Repo │     │  Avalanche   │     │        GenLayer           │     │  Avalanche   │
+│              │     │              │     │                          │     │              │
+│  Issue #42   │────>│ Create Bounty│────>│  5 LLMs evaluate PR vs  │────>│ Release AVAX │
+│  + PR #43    │     │ (lock AVAX)  │     │  issue independently    │     │ to solver    │
+└──────────────┘     └──────────────┘     └──────────────────────────┘     └──────────────┘
+```
+
+## How it works
+
+GitHub bounty platforms move $100M+/year in developer rewards, but verification is 100% manual. A maintainer has to review every PR, compare it against the issue requirements, and approve the payout. This takes 3-15 days. Small bounties ($50-200) often never get reviewed at all.
+
+AutoBounty replaces the human reviewer with GenLayer's decentralized AI consensus. When a contributor submits a PR, five independent validators — each running a different LLM (GPT, Claude, Gemini, Llama) — scrape the GitHub API, read the issue and the PR, and independently evaluate whether the work meets the requirements.
+
+GenLayer is the only blockchain that can read arbitrary web pages on-chain, reason about code quality in natural language, and achieve multi-model consensus on subjective evaluations. A single LLM is gameable. Five independent models are not.
 
 ## Architecture
 
-- **contracts/solidity/** - `BountyEscrow.sol` handles fund locking and payout on Ethereum/EVM chains
-- **contracts/genlayer/** - `BountyJudge.py` is a GenLayer intelligent contract that evaluates submissions using AI
-- **relayer/** - Node.js service bridging GenLayer verdicts to the on-chain escrow
-- **frontend/** - Web interface for submitting and managing bounties
-- **docs/** - Hackathon documentation and specs
+| Component | Chain | Description |
+|-----------|-------|-------------|
+| `BountyEscrow.sol` | Avalanche Fuji | Solidity contract. Locks AVAX, emits events, releases payment. |
+| `BountyJudge.py` | GenLayer Bradbury | Intelligent Contract. Scrapes GitHub API, evaluates PR via LLM consensus. |
+| `relayer/index.js` | Off-chain | Bridges events between Avalanche and GenLayer. ~100 lines of Node.js. |
 
-## Getting Started
+## Setup
 
 ### Prerequisites
 
-- [Foundry](https://book.getfoundry.sh/) for Solidity development
-- Node.js >= 18 for the relayer
-- Python 3.11+ for GenLayer contracts
+- Docker 26+
+- Node.js 18+
+- Foundry (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
+- API key: OpenAI or Anthropic (for GenLayer Studio validators)
 
-### Build & Test Solidity Contracts
+### GenLayer
+
+```bash
+npm install -g genlayer
+genlayer init          # select your LLM provider
+genlayer up            # Studio runs at localhost:8080
+```
+
+### Avalanche (Solidity)
 
 ```bash
 cd contracts/solidity
+forge install
 forge build
 forge test
 ```
 
-### Run the Relayer
+Deploy to Fuji:
+
+```bash
+forge create --rpc-url https://api.avax-test.network/ext/bc/C/rpc \
+  --private-key $PK \
+  src/BountyEscrow.sol:BountyEscrow \
+  --constructor-args $RELAYER_ADDRESS
+```
+
+### Relayer
 
 ```bash
 cd relayer
-cp .env.example .env
-# fill in your .env values
 npm install
+cp .env.example .env   # edit with your contract addresses and keys
 node index.js
 ```
+
+## Tech Stack
+
+| Tech | Role |
+|------|------|
+| GenLayer (Bradbury testnet) | AI consensus — web scraping + LLM evaluation + Optimistic Democracy |
+| Avalanche (Fuji testnet) | Escrow — lock/release AVAX via Solidity |
+| Foundry | Solidity toolchain — build, test, deploy |
+| viem | Avalanche client in the relayer |
+| genlayer-js | GenLayer client in the relayer |
+
+## Hackathon
+
+- **Aleph Hackathon** — Track: Future of Work
+- **GenLayer Bradbury Builders Hackathon** — March 20 - April 3, 2026
+- **Portal:** https://portal.genlayer.foundation
 
 ## License
 
