@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import { createPublicClient, createWalletClient, http, webSocket, parseAbiItem, parseAbi, defineChain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { avalancheFuji } from "viem/chains";
@@ -199,6 +200,7 @@ async function handlePRSubmission(bountyId, prURL, solverAddress) {
 // --- HTTP API for frontend ---
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // POST /submit — frontend calls this with bountyId, prURL, solverAddress
