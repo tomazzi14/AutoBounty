@@ -254,6 +254,59 @@ app.get("/bounties", async (req, res) => {
   }
 });
 
+// GET /status/:id — detailed bounty status with GenLayer verdict
+app.get("/status/:id", async (req, res) => {
+  try {
+    const bountyId = parseInt(req.params.id);
+    const count = await publicClient.readContract({
+      address: ESCROW_CONTRACT_ADDRESS,
+      abi: ESCROW_ABI,
+      functionName: "bountyCount",
+    });
+
+    if (isNaN(bountyId) || bountyId < 0 || bountyId >= Number(count)) {
+      return res.status(404).json({ error: "Bounty not found" });
+    }
+
+    const b = await publicClient.readContract({
+      address: ESCROW_CONTRACT_ADDRESS,
+      abi: ESCROW_ABI,
+      functionName: "bounties",
+      args: [BigInt(bountyId)],
+    });
+
+    const statusName = ["Open", "Submitted", "Approved", "Rejected"][Number(b[6])];
+    const bounty = {
+      id: Number(b[0]),
+      creator: b[1],
+      issueURL: b[2],
+      prURL: b[3],
+      amount: b[4].toString(),
+      solver: b[5],
+      status: statusName,
+      verdict: null,
+    };
+
+    // Include GenLayer verdict if bounty has been evaluated
+    if (statusName === "Approved" || statusName === "Rejected") {
+      try {
+        const verdict = await readGenLayerView("get_verdict");
+        bounty.verdict = {
+          approved: verdict.approved || false,
+          score: verdict.score || 0,
+          reasoning: verdict.reasoning || "",
+        };
+      } catch (e) {
+        bounty.verdict = null;
+      }
+    }
+
+    res.json(bounty);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /health
 app.get("/health", (req, res) => {
   res.json({ status: "ok", escrow: ESCROW_CONTRACT_ADDRESS, genlayer: GENLAYER_CONTRACT_ADDRESS });
@@ -270,9 +323,10 @@ async function main() {
   app.listen(PORT, () => {
     console.log(`API listening on http://localhost:${PORT}`);
     console.log(`\nEndpoints:`);
-    console.log(`  POST /submit   — { bountyId, prURL, solverAddress }`);
-    console.log(`  GET  /bounties — list all bounties`);
-    console.log(`  GET  /health   — check status\n`);
+    console.log(`  POST /submit      — { bountyId, prURL, solverAddress }`);
+    console.log(`  GET  /bounties    — list all bounties`);
+    console.log(`  GET  /status/:id  — bounty detail + GenLayer verdict`);
+    console.log(`  GET  /health      — check status\n`);
   });
 }
 
