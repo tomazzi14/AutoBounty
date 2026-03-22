@@ -342,9 +342,39 @@ app.get("/status/:id", async (req, res) => {
   }
 });
 
-// GET /health
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", escrow: ESCROW_CONTRACT_ADDRESS, genlayer: GENLAYER_CONTRACT_ADDRESS });
+// GET /health — enhanced with uptime and connectivity checks
+const startTime = Date.now();
+
+app.get("/health", async (req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+  let avalancheConnected = false;
+  let genlayerConnected = false;
+
+  try {
+    await publicClient.getBlockNumber();
+    avalancheConnected = true;
+  } catch (e) { /* unreachable */ }
+
+  try {
+    const r = await fetch(GENLAYER_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "net_version", params: [], id: 1 }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (r.ok) genlayerConnected = true;
+  } catch (e) { /* unreachable */ }
+
+  res.json({
+    status: "ok",
+    uptime: uptimeSeconds,
+    lastCheck: new Date().toISOString(),
+    avalancheConnected,
+    genlayerConnected,
+    escrow: ESCROW_CONTRACT_ADDRESS,
+    genlayer: GENLAYER_CONTRACT_ADDRESS,
+  });
 });
 
 // --- Start ---
