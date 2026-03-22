@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { useAccount } from 'wagmi'
 import { useBountyStore } from '@/lib/bounty-store'
 import type { Bounty } from '@/lib/types'
 
@@ -44,7 +45,7 @@ interface BountyCardProps {
 export default function BountyCard({ bounty }: BountyCardProps) {
   const [showSubmitForm, setShowSubmitForm] = useState(false)
   const [prUrl, setPrUrl] = useState('')
-  const [mockSolverWallet] = useState('0x9abc...ef01')
+  const { address } = useAccount()
 
   const { submitPR, isSubmitting, isEvaluating } = useBountyStore()
 
@@ -53,7 +54,7 @@ export default function BountyCard({ bounty }: BountyCardProps) {
   const isThisEvaluating = isEvaluating === bounty.id
 
   const isValidPrUrl = prUrl.match(/github\.com\/[^/]+\/[^/]+\/pull\/\d+/)
-  const canSubmit = isValidPrUrl && !isSubmitting
+  const canSubmit = isValidPrUrl && !isSubmitting && address
 
   const handleSubmitPR = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +62,7 @@ export default function BountyCard({ bounty }: BountyCardProps) {
     await submitPR({
       bountyId: bounty.id,
       prUrl,
-      solverWallet: mockSolverWallet,
+      solverWallet: address!,
     })
     setPrUrl('')
     setShowSubmitForm(false)
