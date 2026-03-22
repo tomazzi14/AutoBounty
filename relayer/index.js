@@ -217,6 +217,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Rate limiting: 5 requests per minute per IP
+const rateLimitMap = new Map();
+const RATE_LIMIT = 5;
+const RATE_WINDOW = 60 * 1000;
+
+app.use("/submit", (req, res, next) => {
+  if (req.method !== "POST") return next();
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  const entries = rateLimitMap.get(ip) || [];
+  const recent = entries.filter((t) => now - t < RATE_WINDOW);
+  if (recent.length >= RATE_LIMIT) {
+    const retryAfter = Math.ceil((recent[0] + RATE_WINDOW - now) / 1000);
+    res.set("Retry-After", String(retryAfter));
+    return res.status(429).json({ error: "Too many requests. Try again later." });
+  }
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  next();
+});
+
 // POST /submit — frontend calls this with bountyId, prURL, solverAddress
 app.post("/submit", async (req, res) => {
   const { bountyId, prURL, solverAddress } = req.body;
