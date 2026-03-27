@@ -3,6 +3,11 @@ src = "src"
 out = "out"
 libs = ["lib"]
 solc = "0.8.20"
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/",
+    "@layerzerolabs/lz-evm-oapp-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/oapp/",
+]
 
 [rpc_endpoints]
 fuji = "https://api.avax-test.network/ext/bc/C/rpc"
