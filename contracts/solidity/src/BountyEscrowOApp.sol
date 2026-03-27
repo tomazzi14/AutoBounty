@@ -2,12 +2,7 @@
 pragma solidity ^0.8.20;
 
 import { OApp, Origin, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/OApp.sol";
-
-interface IERC20 {
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function transfer(address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import { SafeERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title BountyEscrowOApp
 /// @notice USDC escrow for GitHub bounties with trustless cross-chain verdict via LayerZero V2.
@@ -15,6 +10,8 @@ interface IERC20 {
 ///         GenLayer's BountyJudge evaluates with 5 LLMs and sends the verdict back.
 ///         No centralized relayer. No single point of failure.
 contract BountyEscrowOApp is OApp {
+    using SafeERC20 for IERC20;
+
     // ─── Types ───────────────────────────────────────────────────────────────
 
     enum Status {
@@ -41,6 +38,10 @@ contract BountyEscrowOApp is OApp {
     IERC20 public immutable usdc;
     uint32 public immutable genlayerEid;
 
+    /// @notice Claimable USDC per address (pull-over-push pattern).
+    ///         Populated by _lzReceive instead of pushing directly.
+    mapping(address => uint256) public pendingWithdrawals;
+
     // LZ options: type3, executor lzReceive, 200k gas, 0 value
     bytes internal constant LZ_OPTIONS = hex"00030100110100000000000000000000000000030d40";
 
@@ -48,7 +49,8 @@ contract BountyEscrowOApp is OApp {
 
     event BountyCreated(uint256 indexed bountyId, address creator, string issueURL, uint256 amount);
     event SolutionSubmitted(uint256 indexed bountyId, address solver, string prURL);
-    event BountyResolved(uint256 indexed bountyId, bool approved);
+    event BountyResolved(uint256 indexed bountyId, bool approved, address recipient, uint256 amount);
+    event FundsClaimed(address indexed recipient, uint256 amount);
 
     // ─── Errors ──────────────────────────────────────────────────────────────
 
@@ -56,9 +58,8 @@ contract BountyEscrowOApp is OApp {
     error BountyNotFound();
     error BountyNotOpen();
     error BountyNotSubmitted();
-    error TransferFailed();
     error ZeroAddress();
-    error InsufficientFee();
+    error NothingToClaim();
 
     // ─── Constructor ─────────────────────────────────────────────────────────
 
@@ -74,13 +75,17 @@ contract BountyEscrowOApp is OApp {
         genlayerEid = _genlayerEid;
     }
 
-    // ─── Public functions ─────────────────────────────────────────────────────
+    // ─── External functions ───────────────────────────────────────────────────
 
     /// @notice Create a new bounty linked to a GitHub issue. Transfers mUSDC from creator.
+    ///         Records actual received amount to handle fee-on-transfer tokens correctly.
     function createBounty(string calldata issueURL, uint256 amount) external {
         if (amount == 0) revert ZeroAmount();
-        bool success = usdc.transferFrom(msg.sender, address(this), amount);
-        if (!success) revert TransferFailed();
+
+        uint256 before = usdc.balanceOf(address(this));
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = usdc.balanceOf(address(this)) - before;
+        if (received == 0) revert ZeroAmount();
 
         uint256 id = bountyCount++;
         bounties[id] = Bounty({
@@ -88,16 +93,18 @@ contract BountyEscrowOApp is OApp {
             creator: msg.sender,
             issueURL: issueURL,
             prURL: "",
-            amount: amount,
+            amount: received,
             solver: address(0),
             status: Status.Open
         });
 
-        emit BountyCreated(id, msg.sender, issueURL, amount);
+        emit BountyCreated(id, msg.sender, issueURL, received);
     }
 
     /// @notice Submit a PR as a solution. Sends evaluation request to GenLayer via LayerZero.
     ///         msg.value must cover the LayerZero messaging fee (use quoteFee() first).
+    ///         First-come-first-served: once submitted, status moves to Submitted and the
+    ///         bounty is locked until a verdict arrives from GenLayer.
     /// @param bountyId ID of the bounty to solve
     /// @param prURL Full URL of the GitHub PR
     function submitSolution(uint256 bountyId, string calldata prURL) external payable {
@@ -108,16 +115,25 @@ contract BountyEscrowOApp is OApp {
 
         bounty.solver = msg.sender;
         bounty.prURL = prURL;
-        bounty.status = Status.Submitted;
+        bounty.status = Status.Submitted; // locks bounty — no second submitSolution possible
 
         emit SolutionSubmitted(bountyId, msg.sender, prURL);
 
-        // Encode payload: (bountyId, issueURL, prURL) → GenLayer will call evaluate(issueURL, prURL)
-        // and send back (bountyId, approved)
         bytes memory payload = abi.encode(bountyId, bounty.issueURL, prURL);
-
         MessagingFee memory fee = MessagingFee(msg.value, 0);
         _lzSend(genlayerEid, payload, LZ_OPTIONS, fee, payable(msg.sender));
+    }
+
+    /// @notice Claim USDC owed to msg.sender from resolved bounties.
+    ///         Uses pull-over-push: _lzReceive never pushes directly, it only credits here.
+    function claim() external {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        if (amount == 0) revert NothingToClaim();
+
+        pendingWithdrawals[msg.sender] = 0;
+        usdc.safeTransfer(msg.sender, amount);
+
+        emit FundsClaimed(msg.sender, amount);
     }
 
     /// @notice Estimate the LayerZero messaging fee for submitting a solution.
@@ -137,7 +153,9 @@ contract BountyEscrowOApp is OApp {
 
     // ─── LayerZero receive ────────────────────────────────────────────────────
 
-    /// @notice Receives verdict from GenLayer via LayerZero and resolves the bounty.
+    /// @notice Receives verdict from GenLayer via LayerZero and credits funds to recipient.
+    ///         Uses pull-over-push: does NOT transfer USDC directly (prevents blacklist DoS
+    ///         and LayerZero channel blocking). Recipient calls claim() to withdraw.
     ///         Payload: abi.encode(bountyId, approved)
     function _lzReceive(
         Origin calldata, /*_origin*/
@@ -157,10 +175,12 @@ contract BountyEscrowOApp is OApp {
 
         bounty.status = approved ? Status.Approved : Status.Rejected;
 
-        emit BountyResolved(bountyId, approved);
+        // Pull-over-push: credit recipient, never push. Prevents:
+        // - USDC blacklist blocking the LZ channel for all bounties
+        // - Push-payment DoS locking funds forever
+        pendingWithdrawals[recipient] += amount;
 
-        bool success = usdc.transfer(recipient, amount);
-        if (!success) revert TransferFailed();
+        emit BountyResolved(bountyId, approved, recipient, amount);
     }
 
     /// @dev Allow contract to receive AVAX for excess fee refunds from the endpoint.

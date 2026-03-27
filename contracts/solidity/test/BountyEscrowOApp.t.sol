@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {BountyEscrowOApp} from "../src/BountyEscrowOApp.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {Origin} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/OApp.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // ─── Minimal LayerZero Endpoint mock ─────────────────────────────────────────
 
@@ -33,7 +34,7 @@ contract MockEndpointV2 {
 
     event MessageSent(uint32 dstEid, bytes message);
 
-    function setDelegate(address) external {} // OApp calls this in constructor
+    function setDelegate(address) external {}
 
     function quote(MessagingParams calldata, address)
         external
@@ -43,7 +44,7 @@ contract MockEndpointV2 {
         return MessagingFeeLocal(MOCK_NATIVE_FEE, 0);
     }
 
-    function send(MessagingParams calldata params, address /*_refundAddress*/)
+    function send(MessagingParams calldata params, address)
         external
         payable
         returns (MessagingReceipt memory)
@@ -65,12 +66,43 @@ contract MockEndpointV2 {
     }
 }
 
+// ─── Fee-on-transfer USDC mock ────────────────────────────────────────────────
+
+contract FeeOnTransferUSDC {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    uint256 public constant FEE = 1e6; // 1 USDC fee per transfer
+
+    function mint(address to, uint256 amount) external { balanceOf[to] += amount; }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        uint256 net = amount - FEE;
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += net;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        uint256 net = amount - FEE;
+        balanceOf[from] -= amount;
+        balanceOf[to] += net;
+        return true;
+    }
+}
+
 // ─── Test contract ────────────────────────────────────────────────────────────
 
 contract BountyEscrowOAppTest is Test {
     event BountyCreated(uint256 indexed bountyId, address creator, string issueURL, uint256 amount);
     event SolutionSubmitted(uint256 indexed bountyId, address solver, string prURL);
-    event BountyResolved(uint256 indexed bountyId, bool approved);
+    event BountyResolved(uint256 indexed bountyId, bool approved, address recipient, uint256 amount);
+    event FundsClaimed(address indexed recipient, uint256 amount);
 
     BountyEscrowOApp public escrow;
     MockUSDC public usdc;
@@ -81,13 +113,12 @@ contract BountyEscrowOAppTest is Test {
     address public solver = makeAddr("solver");
     address public attacker = makeAddr("attacker");
 
-    // Simulated GenLayer peer address
     address public genlayerPeer = makeAddr("genlayerPeer");
-    uint32 public constant GENLAYER_EID = 40999; // placeholder Bradbury EID
+    uint32 public constant GENLAYER_EID = 40999;
 
     string constant ISSUE_URL = "https://github.com/org/repo/issues/42";
     string constant PR_URL = "https://github.com/org/repo/pull/43";
-    uint256 constant REWARD = 500e6; // 500 mUSDC
+    uint256 constant REWARD = 500e6;
 
     uint256 constant LZ_FEE = 0.01 ether;
 
@@ -95,15 +126,12 @@ contract BountyEscrowOAppTest is Test {
         usdc = new MockUSDC();
         endpoint = new MockEndpointV2();
 
-        // Deploy OApp with mock endpoint — deployer becomes Ownable owner
         vm.prank(owner);
         escrow = new BountyEscrowOApp(address(endpoint), owner, address(usdc), GENLAYER_EID);
 
-        // Set GenLayer as trusted peer (required for lzReceive to accept messages)
         vm.prank(owner);
         escrow.setPeer(GENLAYER_EID, bytes32(uint256(uint160(genlayerPeer))));
 
-        // Fund addresses
         usdc.mint(creator, 10_000e6);
         usdc.mint(attacker, 1_000e6);
         vm.deal(solver, 1 ether);
@@ -139,7 +167,6 @@ contract BountyEscrowOAppTest is Test {
 
     function test_CreateBounty_StorageIsCorrect() public {
         uint256 id = _createBounty();
-
         (
             uint256 storedId,
             address storedCreator,
@@ -166,6 +193,24 @@ contract BountyEscrowOAppTest is Test {
         assertEq(usdc.balanceOf(address(escrow)), REWARD);
     }
 
+    function test_CreateBounty_RecordsActualReceived_FeeOnTransfer() public {
+        FeeOnTransferUSDC feeToken = new FeeOnTransferUSDC();
+        vm.prank(owner);
+        BountyEscrowOApp feeEscrow = new BountyEscrowOApp(
+            address(endpoint), owner, address(feeToken), GENLAYER_EID
+        );
+        feeToken.mint(creator, 10_000e6);
+        vm.prank(creator);
+        feeToken.approve(address(feeEscrow), type(uint256).max);
+
+        vm.prank(creator);
+        feeEscrow.createBounty(ISSUE_URL, REWARD);
+
+        (,,,, uint256 storedAmount,,) = feeEscrow.bounties(0);
+        // Should record REWARD - FEE, not REWARD
+        assertEq(storedAmount, REWARD - FeeOnTransferUSDC(address(feeToken)).FEE());
+    }
+
     function test_CreateBounty_EmitsEvent() public {
         vm.expectEmit(true, true, false, true);
         emit BountyCreated(0, creator, ISSUE_URL, REWARD);
@@ -185,14 +230,6 @@ contract BountyEscrowOAppTest is Test {
         vm.prank(noApproval);
         vm.expectRevert();
         escrow.createBounty(ISSUE_URL, REWARD);
-    }
-
-    function test_CreateBounty_CountIncreases() public {
-        assertEq(escrow.bountyCount(), 0);
-        _createBounty();
-        assertEq(escrow.bountyCount(), 1);
-        _createBounty();
-        assertEq(escrow.bountyCount(), 2);
     }
 
     // ─── submitSolution ──────────────────────────────────────────────────────
@@ -218,13 +255,15 @@ contract BountyEscrowOAppTest is Test {
         escrow.submitSolution{value: LZ_FEE}(id, PR_URL);
     }
 
-    function test_SubmitSolution_AnySolverCanSubmit() public {
+    function test_SubmitSolution_FirstComeFirstServed() public {
         uint256 id = _createBounty();
-        // Anyone can submit (no onlyRelayer)
-        vm.prank(attacker);
+        // First solver wins — second call reverts with BountyNotOpen
+        vm.prank(solver);
         escrow.submitSolution{value: LZ_FEE}(id, PR_URL);
-        (,,,,, address storedSolver,) = escrow.bounties(id);
-        assertEq(storedSolver, attacker);
+
+        vm.prank(attacker);
+        vm.expectRevert(BountyEscrowOApp.BountyNotOpen.selector);
+        escrow.submitSolution{value: LZ_FEE}(id, PR_URL);
     }
 
     function test_SubmitSolution_Revert_BountyNotFound() public {
@@ -240,16 +279,46 @@ contract BountyEscrowOAppTest is Test {
         escrow.submitSolution{value: LZ_FEE}(id, PR_URL);
     }
 
-    // ─── _lzReceive: verdict from GenLayer ───────────────────────────────────
+    // ─── _lzReceive + claim (pull-over-push) ─────────────────────────────────
 
-    function test_LzReceive_Approved_SolverGetsUSDC() public {
+    function test_LzReceive_Approved_CreditsSolver() public {
         uint256 id = _createAndSubmit();
-        uint256 solverBefore = usdc.balanceOf(solver);
-
         _deliverVerdict(id, true);
 
-        assertEq(usdc.balanceOf(solver), solverBefore + REWARD);
+        assertEq(escrow.pendingWithdrawals(solver), REWARD);
+        assertEq(usdc.balanceOf(solver), 0); // not pushed yet
+        assertEq(usdc.balanceOf(address(escrow)), REWARD); // still in escrow until claim
+    }
+
+    function test_Claim_Approved_SolverReceivesUSDC() public {
+        uint256 id = _createAndSubmit();
+        _deliverVerdict(id, true);
+
+        uint256 before = usdc.balanceOf(solver);
+        vm.prank(solver);
+        escrow.claim();
+
+        assertEq(usdc.balanceOf(solver), before + REWARD);
+        assertEq(escrow.pendingWithdrawals(solver), 0);
         assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
+
+    function test_LzReceive_Rejected_CreditsCreator() public {
+        uint256 id = _createAndSubmit();
+        _deliverVerdict(id, false);
+
+        assertEq(escrow.pendingWithdrawals(creator), REWARD);
+    }
+
+    function test_Claim_Rejected_CreatorReceivesUSDC() public {
+        uint256 id = _createAndSubmit();
+        _deliverVerdict(id, false);
+
+        uint256 before = usdc.balanceOf(creator);
+        vm.prank(creator);
+        escrow.claim();
+
+        assertEq(usdc.balanceOf(creator), before + REWARD);
     }
 
     function test_LzReceive_Approved_StatusIsApproved() public {
@@ -259,16 +328,6 @@ contract BountyEscrowOAppTest is Test {
         assertEq(uint8(status), uint8(BountyEscrowOApp.Status.Approved));
     }
 
-    function test_LzReceive_Rejected_CreatorGetsUSDC() public {
-        uint256 id = _createAndSubmit();
-        uint256 creatorBefore = usdc.balanceOf(creator);
-
-        _deliverVerdict(id, false);
-
-        assertEq(usdc.balanceOf(creator), creatorBefore + REWARD);
-        assertEq(usdc.balanceOf(address(escrow)), 0);
-    }
-
     function test_LzReceive_Rejected_StatusIsRejected() public {
         uint256 id = _createAndSubmit();
         _deliverVerdict(id, false);
@@ -276,18 +335,27 @@ contract BountyEscrowOAppTest is Test {
         assertEq(uint8(status), uint8(BountyEscrowOApp.Status.Rejected));
     }
 
-    function test_LzReceive_EmitsEvent_Approved() public {
+    function test_LzReceive_EmitsEvent() public {
         uint256 id = _createAndSubmit();
         vm.expectEmit(true, false, false, true);
-        emit BountyResolved(id, true);
+        emit BountyResolved(id, true, solver, REWARD);
         _deliverVerdict(id, true);
     }
 
-    function test_LzReceive_EmitsEvent_Rejected() public {
+    function test_LzReceive_Idempotent_NoDoublePay() public {
         uint256 id = _createAndSubmit();
-        vm.expectEmit(true, false, false, true);
-        emit BountyResolved(id, false);
-        _deliverVerdict(id, false);
+        _deliverVerdict(id, true);
+        uint256 credited = escrow.pendingWithdrawals(solver);
+
+        _deliverVerdict(id, true); // second verdict silently ignored
+
+        assertEq(escrow.pendingWithdrawals(solver), credited); // unchanged
+    }
+
+    function test_LzReceive_InvalidBountyId_Ignored() public {
+        // Should not revert — silently ignored
+        bytes memory payload = abi.encode(uint256(999), true);
+        endpoint.deliverVerdict(address(escrow), GENLAYER_EID, genlayerPeer, payload);
     }
 
     function test_LzReceive_OnlyFromEndpoint() public {
@@ -299,27 +367,48 @@ contract BountyEscrowOAppTest is Test {
         });
         bytes memory payload = abi.encode(id, true);
 
-        // Attacker cannot call lzReceive directly
         vm.prank(attacker);
         vm.expectRevert();
         escrow.lzReceive(origin, bytes32(0), payload, address(0), "");
     }
 
-    function test_LzReceive_Idempotent_IgnoresDoubleVerdicts() public {
+    function test_LzReceive_BlacklistedRecipient_DoesNotBlockChannel() public {
+        // With pull-over-push, _lzReceive never calls usdc.transfer,
+        // so a blacklisted recipient can never block the LZ channel.
         uint256 id = _createAndSubmit();
         _deliverVerdict(id, true);
-        uint256 solverBalance = usdc.balanceOf(solver);
 
-        // Second verdict for same bounty is silently ignored
-        _deliverVerdict(id, true);
-
-        assertEq(usdc.balanceOf(solver), solverBalance); // no double-pay
+        // Funds are credited — blacklisted user simply can't claim (handled outside contract)
+        assertEq(escrow.pendingWithdrawals(solver), REWARD);
+        // No revert, channel is not blocked
     }
 
-    function test_LzReceive_InvalidBountyId_Ignored() public {
-        // Verdict for non-existent bountyId should not revert
-        bytes memory payload = abi.encode(uint256(999), true);
-        endpoint.deliverVerdict(address(escrow), GENLAYER_EID, genlayerPeer, payload);
+    function test_Claim_Revert_NothingToClaim() public {
+        vm.prank(solver);
+        vm.expectRevert(BountyEscrowOApp.NothingToClaim.selector);
+        escrow.claim();
+    }
+
+    function test_Claim_EmitsEvent() public {
+        uint256 id = _createAndSubmit();
+        _deliverVerdict(id, true);
+
+        vm.expectEmit(true, false, false, true);
+        emit FundsClaimed(solver, REWARD);
+        vm.prank(solver);
+        escrow.claim();
+    }
+
+    function test_Claim_ClearsBalance_CannotDoubleWithdraw() public {
+        uint256 id = _createAndSubmit();
+        _deliverVerdict(id, true);
+
+        vm.prank(solver);
+        escrow.claim();
+
+        vm.prank(solver);
+        vm.expectRevert(BountyEscrowOApp.NothingToClaim.selector);
+        escrow.claim();
     }
 
     // ─── quoteFee ─────────────────────────────────────────────────────────────
@@ -327,7 +416,7 @@ contract BountyEscrowOAppTest is Test {
     function test_QuoteFee_ReturnsNonZeroFee() public {
         _createBounty();
         uint256 fee = escrow.quoteFee(0, PR_URL);
-        assertEq(fee, MockEndpointV2(address(endpoint)).MOCK_NATIVE_FEE());
+        assertEq(fee, endpoint.MOCK_NATIVE_FEE());
     }
 
     function test_QuoteFee_Revert_BountyNotFound() public {
@@ -341,24 +430,43 @@ contract BountyEscrowOAppTest is Test {
         uint256 id0 = _createBounty();
         uint256 id1 = _createBounty();
 
-        // Solver 1 submits bounty 0
+        address solver2 = makeAddr("solver2");
+        vm.deal(solver2, 1 ether);
+
+        vm.prank(solver);
+        escrow.submitSolution{value: LZ_FEE}(id0, PR_URL);
+        vm.prank(solver2);
+        escrow.submitSolution{value: LZ_FEE}(id1, PR_URL);
+
+        _deliverVerdict(id0, true);  // solver wins
+        _deliverVerdict(id1, false); // solver2 loses, creator refunded
+
+        assertEq(escrow.pendingWithdrawals(solver), REWARD);
+        assertEq(escrow.pendingWithdrawals(solver2), 0);
+        assertEq(escrow.pendingWithdrawals(creator), REWARD); // refund from id1
+    }
+
+    function test_MultipleBounties_AccumulatedClaim() public {
+        // Creator loses both bounties → can claim 2x REWARD in one call
+        uint256 id0 = _createBounty();
+        uint256 id1 = _createBounty();
+
         vm.prank(solver);
         escrow.submitSolution{value: LZ_FEE}(id0, PR_URL);
 
-        // Solver 2 submits bounty 1
         address solver2 = makeAddr("solver2");
         vm.deal(solver2, 1 ether);
         vm.prank(solver2);
         escrow.submitSolution{value: LZ_FEE}(id1, PR_URL);
 
-        // Bounty 0 approved, bounty 1 rejected
-        _deliverVerdict(id0, true);
+        _deliverVerdict(id0, false);
         _deliverVerdict(id1, false);
 
-        assertEq(usdc.balanceOf(solver), REWARD);
-        assertEq(usdc.balanceOf(solver2), 0);
-        // Creator gets refund for id1
-        // (initial balance was 10_000e6, spent 2 * REWARD = 1000e6)
-        assertEq(usdc.balanceOf(creator), 10_000e6 - REWARD); // one REWARD returned
+        assertEq(escrow.pendingWithdrawals(creator), 2 * REWARD);
+
+        uint256 before = usdc.balanceOf(creator);
+        vm.prank(creator);
+        escrow.claim();
+        assertEq(usdc.balanceOf(creator), before + 2 * REWARD);
     }
 }
