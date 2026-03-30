@@ -377,28 +377,34 @@ app.get("/health", async (req, res) => {
   });
 });
 
+// --- Exports ---
+
+export { app, rateLimitMap };
+
 // --- Start ---
 
-console.log("AutoBounty Relayer v1.0");
-console.log(`Escrow   : ${ESCROW_CONTRACT_ADDRESS}`);
-console.log(`GenLayer : ${GENLAYER_CONTRACT_ADDRESS}`);
-console.log(`Relayer  : ${account.address}`);
+if (process.env.NODE_ENV !== "test") {
+  console.log("AutoBounty Relayer v1.0");
+  console.log(`Escrow   : ${ESCROW_CONTRACT_ADDRESS}`);
+  console.log(`GenLayer : ${GENLAYER_CONTRACT_ADDRESS}`);
+  console.log(`Relayer  : ${account.address}`);
 
-const server = app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
-  console.log(`\nEndpoints:`);
-  console.log(`  POST /submit      — { bountyId, prURL, solverAddress }`);
-  console.log(`  GET  /bounties    — list all bounties`);
-  console.log(`  GET  /status/:id  — bounty detail + GenLayer verdict`);
-  console.log(`  GET  /health      — check status\n`);
-});
+  const server = app.listen(PORT, () => {
+    console.log(`API listening on http://localhost:${PORT}`);
+    console.log(`\nEndpoints:`);
+    console.log(`  POST /submit      — { bountyId, prURL, solverAddress }`);
+    console.log(`  GET  /bounties    — list all bounties`);
+    console.log(`  GET  /status/:id  — bounty detail + GenLayer verdict`);
+    console.log(`  GET  /health      — check status\n`);
+  });
 
-server.on("error", (err) => {
-  console.error("Server error:", err.message);
-});
+  server.on("error", (err) => {
+    console.error("Server error:", err.message);
+  });
 
-process.on("SIGINT", () => {
-  console.log("\nShutting down...");
-  server.close();
-  process.exit(0);
-});
+  process.on("SIGINT", () => {
+    console.log("\nShutting down...");
+    server.close();
+    process.exit(0);
+  });
+}

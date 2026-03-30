@@ -336,4 +336,102 @@ contract BountyEscrowTest is Test {
         assertEq(amount0, 1_000e6);
         assertEq(amount1, 2_000e6);
     }
+
+    function test_MultipleBounties_IndependentResolution() public {
+        // bounty 0: approve → solver paid; bounty 1: reject → creator refunded
+        address solver2 = makeAddr("solver2");
+        uint256 id0 = _createAndSubmit(); // solver
+
+        vm.prank(creator);
+        escrow.createBounty(ISSUE_URL, REWARD);
+        uint256 id1 = escrow.bountyCount() - 1;
+        vm.prank(relayerAddr);
+        escrow.submitSolution(id1, PR_URL, solver2);
+
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id0, true);
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id1, false);
+
+        assertEq(usdc.balanceOf(solver), REWARD);
+        assertEq(usdc.balanceOf(solver2), 0);
+        // creator spent 2*REWARD, got 1 back
+        assertEq(usdc.balanceOf(creator), 10_000e6 - 2 * REWARD + REWARD);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
+
+    function test_MultipleBounties_AccumulatedRefund() public {
+        // two bounties both rejected → creator refunded 2x
+        address solver2 = makeAddr("solver2");
+        uint256 id0 = _createAndSubmit();
+
+        vm.prank(creator);
+        escrow.createBounty(ISSUE_URL, REWARD);
+        uint256 id1 = escrow.bountyCount() - 1;
+        vm.prank(relayerAddr);
+        escrow.submitSolution(id1, PR_URL, solver2);
+
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id0, false);
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id1, false);
+
+        // creator spent 2*REWARD and got both back
+        assertEq(usdc.balanceOf(creator), 10_000e6);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
+
+    function test_Escrow_HoldsAllFunds_BeforeResolution() public {
+        _createBounty();
+        _createBounty();
+        assertEq(usdc.balanceOf(address(escrow)), 2 * REWARD);
+    }
+
+    // ─── Fuzz tests ──────────────────────────────────────────────────────────
+
+    function testFuzz_CreateBounty_Amount(uint96 amount) public {
+        vm.assume(amount > 0);
+        address fuzzCreator = makeAddr("fuzzCreator");
+        usdc.mint(fuzzCreator, amount);
+        vm.prank(fuzzCreator);
+        usdc.approve(address(escrow), amount);
+        vm.prank(fuzzCreator);
+        escrow.createBounty(ISSUE_URL, amount);
+        (,,,, uint256 storedAmount,,) = escrow.bounties(escrow.bountyCount() - 1);
+        assertEq(storedAmount, amount);
+    }
+
+    function testFuzz_ResolveBounty_Approved_EmptiesEscrow(uint96 amount) public {
+        vm.assume(amount > 0);
+        address fuzzCreator = makeAddr("fuzzCreator");
+        usdc.mint(fuzzCreator, amount);
+        vm.prank(fuzzCreator);
+        usdc.approve(address(escrow), amount);
+        vm.prank(fuzzCreator);
+        escrow.createBounty(ISSUE_URL, amount);
+        uint256 id = escrow.bountyCount() - 1;
+        vm.prank(relayerAddr);
+        escrow.submitSolution(id, PR_URL, solver);
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id, true);
+        assertEq(usdc.balanceOf(solver), amount);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
+
+    function testFuzz_ResolveBounty_Rejected_RefundsCreator(uint96 amount) public {
+        vm.assume(amount > 0);
+        address fuzzCreator = makeAddr("fuzzCreator");
+        usdc.mint(fuzzCreator, amount);
+        vm.prank(fuzzCreator);
+        usdc.approve(address(escrow), amount);
+        vm.prank(fuzzCreator);
+        escrow.createBounty(ISSUE_URL, amount);
+        uint256 id = escrow.bountyCount() - 1;
+        vm.prank(relayerAddr);
+        escrow.submitSolution(id, PR_URL, solver);
+        vm.prank(relayerAddr);
+        escrow.resolveBounty(id, false);
+        assertEq(usdc.balanceOf(fuzzCreator), amount);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
 }
