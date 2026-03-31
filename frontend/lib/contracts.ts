@@ -14,7 +14,7 @@ export const NETWORKS = {
   mainnet: {
     name: 'Avalanche',
     chain: avalanche,
-    escrowAddress: (process.env.NEXT_PUBLIC_MAINNET_ESCROW_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    escrowAddress: (process.env.NEXT_PUBLIC_MAINNET_ESCROW_ADDRESS || '0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932') as `0x${string}`,
     usdcAddress: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' as `0x${string}`,
     usdcSymbol: 'USDC',
     canMint: false, // Real USDC
