@@ -8,9 +8,12 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import RoleToggle from './role-toggle'
 import CompanyDashboard from './company-dashboard'
 import DeveloperDashboard from './developer-dashboard'
+import { useBountyStore } from '@/lib/bounty-store'
+import type { Network } from '@/lib/contracts'
 
 export default function DashboardClient() {
   const [role, setRole] = useState<'company' | 'developer'>('company')
+  const { network, setNetwork } = useBountyStore()
 
   return (
     <div className="min-h-screen bg-background grid-bg noise">
@@ -34,7 +37,27 @@ export default function DashboardClient() {
               priority
             />
           </div>
-          <ConnectButton chainStatus="icon" showBalance={false} />
+          <div className="flex items-center gap-3">
+            {/* Network Toggle */}
+            <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+              {(['testnet', 'mainnet'] as Network[]).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setNetwork(n)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    network === n
+                      ? n === 'mainnet'
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'bg-white/15 text-white'
+                      : 'text-[var(--text-dim)] hover:text-white'
+                  }`}
+                >
+                  {n === 'mainnet' ? 'Mainnet' : 'Testnet'}
+                </button>
+              ))}
+            </div>
+            <ConnectButton chainStatus="icon" showBalance={false} />
+          </div>
         </div>
       </header>
 

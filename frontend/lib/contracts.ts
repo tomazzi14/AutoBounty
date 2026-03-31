@@ -1,9 +1,33 @@
 import { parseAbi } from 'viem'
+import { avalancheFuji, avalanche } from 'wagmi/chains'
 
-// Deployed on Avalanche Fuji
-export const ESCROW_ADDRESS = '0xF284251509ebcb1AFc111e27dF889703815AeE39' as const
-export const USDC_ADDRESS = '0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d' as const
-export const RELAYER_API = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3100'
+export const NETWORKS = {
+  testnet: {
+    name: 'Fuji Testnet',
+    chain: avalancheFuji,
+    escrowAddress: '0xF284251509ebcb1AFc111e27dF889703815AeE39' as `0x${string}`,
+    usdcAddress: '0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d' as `0x${string}`,
+    usdcSymbol: 'mUSDC',
+    canMint: true, // MockUSDC has a public mint()
+    relayerApi: process.env.NEXT_PUBLIC_RELAYER_URL_TESTNET || 'http://localhost:3100',
+  },
+  mainnet: {
+    name: 'Avalanche',
+    chain: avalanche,
+    escrowAddress: (process.env.NEXT_PUBLIC_MAINNET_ESCROW_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    usdcAddress: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' as `0x${string}`,
+    usdcSymbol: 'USDC',
+    canMint: false, // Real USDC
+    relayerApi: process.env.NEXT_PUBLIC_RELAYER_URL_MAINNET || 'http://localhost:3101',
+  },
+} as const
+
+export type Network = keyof typeof NETWORKS
+
+// Legacy exports — kept for backward compat, default to testnet
+export const ESCROW_ADDRESS = NETWORKS.testnet.escrowAddress
+export const USDC_ADDRESS = NETWORKS.testnet.usdcAddress
+export const RELAYER_API = NETWORKS.testnet.relayerApi
 
 export const ESCROW_ABI = parseAbi([
   'function createBounty(string issueURL, uint256 amount) external',

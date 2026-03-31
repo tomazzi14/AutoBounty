@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { createPublicClient, createWalletClient, http, webSocket, parseAbiItem, parseAbi, defineChain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { avalancheFuji } from "viem/chains";
+import { avalancheFuji, avalanche } from "viem/chains";
 import { foundry } from "viem/chains";
 import { createClient as createGenlayerClient } from "genlayer-js";
 import { localnet, testnetBradbury } from "genlayer-js/chains";
@@ -22,7 +22,7 @@ const {
 
 // --- Avalanche setup ---
 
-const evmChain = CHAIN === "local" ? foundry : avalancheFuji;
+const evmChain = CHAIN === "local" ? foundry : CHAIN === "mainnet" ? avalanche : avalancheFuji;
 
 const ESCROW_ABI = parseAbi([
   "function submitSolution(uint256 bountyId, string prURL, address solver) external",

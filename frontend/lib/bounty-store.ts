@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Bounty, CreateBountyInput, SubmitPRInput, Agent, ActivityFeedItem } from './types'
-import { RELAYER_API } from './contracts'
+import { NETWORKS, type Network } from './contracts'
 
 // Mock agents (kept for UI)
 const mockAgents: Agent[] = [
@@ -40,7 +40,9 @@ interface BountyStore {
   isCreating: boolean
   isSubmitting: boolean
   isEvaluating: string | null
+  network: Network
 
+  setNetwork: (network: Network) => void
   fetchBounties: () => Promise<void>
   createBounty: (input: CreateBountyInput, creatorWallet: string) => Promise<void>
   submitPR: (input: SubmitPRInput) => Promise<void>
@@ -56,10 +58,18 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   isCreating: false,
   isSubmitting: false,
   isEvaluating: null,
+  network: 'testnet',
+
+  setNetwork: (network) => {
+    set({ network, bounties: [] })
+    get().fetchBounties()
+  },
 
   fetchBounties: async () => {
     try {
-      const res = await fetch(`${RELAYER_API}/bounties`)
+      const { network } = get()
+      const api = NETWORKS[network].relayerApi
+      const res = await fetch(`${api}/bounties`)
       const data = await res.json()
       const bounties: Bounty[] = data.map((b: any) => ({
         id: String(b.id),
@@ -105,7 +115,6 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   submitPR: async (input) => {
     set({ isSubmitting: true })
 
-    // Update UI immediately
     set((state) => ({
       bounties: state.bounties.map((b) =>
         b.id === input.bountyId
@@ -115,7 +124,6 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
       isSubmitting: false,
     }))
 
-    // Auto-trigger evaluation
     setTimeout(() => {
       get().evaluateBounty(input.bountyId)
     }, 500)
@@ -124,7 +132,6 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   evaluateBounty: async (bountyId) => {
     set({ isEvaluating: bountyId })
 
-    // Update status to evaluating
     set((state) => ({
       bounties: state.bounties.map((b) =>
         b.id === bountyId ? { ...b, status: 'evaluating' as const } : b
@@ -132,12 +139,13 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
     }))
 
     try {
-      // Find bounty to get PR URL and solver
       const bounty = get().bounties.find((b) => b.id === bountyId)
       if (!bounty?.prUrl || !bounty?.solverWallet) throw new Error('Missing PR or solver')
 
-      // Call relayer API
-      const res = await fetch(`${RELAYER_API}/submit`, {
+      const { network } = get()
+      const api = NETWORKS[network].relayerApi
+
+      const res = await fetch(`${api}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,7 +174,6 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
     } catch (err) {
       console.error('Evaluation failed:', err)
       set({ isEvaluating: null })
-      // Refresh from chain
       get().fetchBounties()
     }
   },
