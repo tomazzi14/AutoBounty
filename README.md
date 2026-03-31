@@ -25,10 +25,10 @@ GenLayer is the only blockchain that can read arbitrary web pages on-chain, reas
 
 | Component | Chain | Description |
 |-----------|-------|-------------|
-| `BountyEscrow.sol` | Avalanche Fuji | Solidity contract. Locks mUSDC in escrow, releases payment based on verdict. |
+| `BountyEscrow.sol` | Avalanche C-Chain / Fuji | Solidity contract. Locks USDC in escrow, releases payment based on verdict. |
 | `MockUSDC.sol` | Avalanche Fuji | Freely mintable ERC-20 (6 decimals) for testnet bounties. |
 | `BountyJudge.py` | GenLayer Bradbury | Intelligent Contract. Fetches GitHub API data, evaluates PR via Optimistic Democracy consensus (Equivalence Principle Pattern 4: `prompt_non_comparative`). |
-| `relayer/index.js` | Off-chain | Bridges events between Avalanche and GenLayer. Submits solutions, triggers evaluation, resolves bounties. |
+| `relayer/index.js` | Off-chain | Bridges events between Avalanche and GenLayer. Submits solutions, triggers evaluation, resolves bounties. Supports mainnet and testnet via `CHAIN` env var. |
 
 ## Setup
 
@@ -94,20 +94,29 @@ node index.js
 | Tech | Role |
 |------|------|
 | GenLayer (Bradbury testnet) | AI consensus — web scraping + LLM evaluation + Optimistic Democracy |
-| Avalanche (Fuji testnet) | Escrow — lock/release mUSDC via Solidity |
+| Avalanche C-Chain (mainnet) | Escrow — lock/release real USDC via Solidity |
+| Avalanche Fuji (testnet) | Escrow — lock/release mUSDC (mintable) for testing |
 | Foundry | Solidity toolchain — build, test, deploy |
 | viem | Avalanche client in the relayer |
 | genlayer-js | GenLayer client in the relayer |
 
 ## Deployed Contracts
 
-### Avalanche Fuji
+### Avalanche Mainnet
+
+| Contract | Address |
+|----------|---------|
+| BountyEscrow | [`0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932`](https://snowtrace.io/address/0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932) |
+| USDC | [`0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E`](https://snowtrace.io/address/0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E) |
+| Relayer | [`0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd`](https://snowtrace.io/address/0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd) |
+
+### Avalanche Fuji (Testnet)
 
 | Contract | Address |
 |----------|---------|
 | MockUSDC | [`0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d`](https://testnet.snowtrace.io/address/0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d) |
 | BountyEscrow | [`0xF284251509ebcb1AFc111e27dF889703815AeE39`](https://testnet.snowtrace.io/address/0xF284251509ebcb1AFc111e27dF889703815AeE39) |
-| Relayer | [`0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734`](https://testnet.snowtrace.io/address/0x5ba6C6F599C74476d335B7Ad34C97F9c842e8734) |
+| Relayer | [`0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd`](https://testnet.snowtrace.io/address/0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd) |
 
 ### GenLayer Bradbury
 
