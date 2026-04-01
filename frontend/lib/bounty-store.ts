@@ -108,8 +108,8 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
       isCreating: false,
     }))
 
-    // Refresh from chain after a delay
-    setTimeout(() => get().fetchBounties(), 3000)
+    // Refresh from chain after a delay — give relayer time to pick up the event
+    setTimeout(() => get().fetchBounties(), 8000)
   },
 
   submitPR: async (input) => {

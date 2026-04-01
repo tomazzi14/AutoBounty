@@ -9,7 +9,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { parseUnits } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBountyStore } from '@/lib/bounty-store'
-import { ESCROW_ADDRESS, USDC_ADDRESS, ESCROW_ABI, USDC_ABI } from '@/lib/contracts'
+import { NETWORKS, ESCROW_ABI, USDC_ABI } from '@/lib/contracts'
 import BountyList from './bounty-list'
 import AgentModeContent from './agent-mode-content'
 
@@ -20,7 +20,8 @@ export default function CompanyDashboard() {
   const [solverMode, setSolverMode] = useState<'human' | 'agent'>('human')
   const [txStep, setTxStep] = useState<'idle' | 'approving' | 'creating' | 'done'>('idle')
 
-  const { createBounty, fetchBounties, isCreating } = useBountyStore()
+  const { createBounty, fetchBounties, isCreating, network } = useBountyStore()
+  const { escrowAddress, usdcAddress, usdcSymbol } = NETWORKS[network]
 
   // Approve USDC
   const { writeContract: writeApprove, data: approveHash } = useWriteContract()
@@ -39,7 +40,7 @@ export default function CompanyDashboard() {
       setTxStep('creating')
       const amountRaw = parseUnits(amount, 6)
       writeCreate({
-        address: ESCROW_ADDRESS,
+        address: escrowAddress,
         abi: ESCROW_ABI,
         functionName: 'createBounty',
         args: [githubUrl, amountRaw],
@@ -71,10 +72,10 @@ export default function CompanyDashboard() {
     const amountRaw = parseUnits(amount, 6)
 
     writeApprove({
-      address: USDC_ADDRESS,
+      address: usdcAddress,
       abi: USDC_ABI,
       functionName: 'approve',
-      args: [ESCROW_ADDRESS, amountRaw],
+      args: [escrowAddress, amountRaw],
     })
   }
 
@@ -182,7 +183,7 @@ export default function CompanyDashboard() {
                     alt="USDC"
                     className="w-4 h-4 rounded-full"
                   />
-                  <span>mUSDC</span>
+                  <span>{usdcSymbol}</span>
                 </label>
                 <div className="relative">
                   <img
