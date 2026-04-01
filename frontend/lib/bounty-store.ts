@@ -71,7 +71,7 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
       const api = NETWORKS[network].relayerApi
       const res = await fetch(`${api}/bounties`)
       const data = await res.json()
-      const bounties: Bounty[] = data.map((b: any) => ({
+      const fetched: Bounty[] = data.map((b: any) => ({
         id: String(b.id),
         githubIssueUrl: b.issueURL,
         issueTitle: extractIssueTitle(b.issueURL),
@@ -82,7 +82,14 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
         prUrl: b.prURL || undefined,
         solverWallet: b.solver !== '0x0000000000000000000000000000000000000000' ? b.solver : undefined,
       }))
-      set({ bounties })
+      // Preserve pending bounties not yet confirmed on-chain (avoids race condition)
+      set((state) => {
+        const pending = state.bounties.filter(b =>
+          b.id.startsWith('pending-') &&
+          !fetched.some(f => f.githubIssueUrl === b.githubIssueUrl)
+        )
+        return { bounties: [...fetched, ...pending] }
+      })
     } catch (err) {
       console.error('Failed to fetch bounties:', err)
     }
