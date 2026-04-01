@@ -5,7 +5,7 @@ export const NETWORKS = {
   testnet: {
     name: 'Fuji Testnet',
     chain: avalancheFuji,
-    escrowAddress: '0xF284251509ebcb1AFc111e27dF889703815AeE39' as `0x${string}`,
+    escrowAddress: '0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932' as `0x${string}`,
     usdcAddress: '0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d' as `0x${string}`,
     usdcSymbol: 'mUSDC',
     canMint: true, // MockUSDC has a public mint()

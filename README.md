@@ -115,7 +115,7 @@ node index.js
 | Contract | Address |
 |----------|---------|
 | MockUSDC | [`0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d`](https://testnet.snowtrace.io/address/0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d) |
-| BountyEscrow | [`0xF284251509ebcb1AFc111e27dF889703815AeE39`](https://testnet.snowtrace.io/address/0xF284251509ebcb1AFc111e27dF889703815AeE39) |
+| BountyEscrow | [`0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932`](https://testnet.snowtrace.io/address/0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932) |
 | Relayer | [`0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd`](https://testnet.snowtrace.io/address/0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd) |
 
 ### GenLayer Bradbury
