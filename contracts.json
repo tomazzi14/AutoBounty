@@ -1,0 +1,17 @@
+{
+  "avalanche_mainnet": {
+    "chainId": 43114,
+    "BountyEscrow": "0xB61Dc153eB4B149C5cb6Ed46FD67c62063311932",
+    "USDC": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+    "relayer": "0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd"
+  },
+  "avalanche_fuji": {
+    "chainId": 43113,
+    "BountyEscrow": "0xF284251509ebcb1AFc111e27dF889703815AeE39",
+    "MockUSDC": "0x4a7B3cD32D8f43FaDb08Cb2d0752BB87328b574d",
+    "relayer": "0x235713C4CA6A8cd2adc0333F64d1b453BfCdBbfd"
+  },
+  "genlayer_bradbury": {
+    "BountyJudge": "0x0dD12a8cC5441B26ED4a798AE0D1Dc6369fC2516"
+  }
+}
