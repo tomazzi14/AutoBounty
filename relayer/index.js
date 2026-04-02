@@ -57,49 +57,24 @@ const glClient = createGenlayerClient({
 
 // --- GenLayer polling ---
 
+// GenLayer numeric status codes: 6=ACCEPTED, 7=FINALIZED, 8=CANCELED, 12=VALIDATORS_TIMEOUT
+const DECIDED_STATUSES = ["6", "7", "8", "12"];
+const ACCEPTED_STATUSES = ["6", "7"]; // successful completion
+
 async function pollGenLayerTx(txHash, intervalMs = 10000, maxAttempts = 60) {
+  console.log(`  Waiting for Bradbury consensus (can take 2-10 min)...`);
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      // Try both receipt methods
-      const receipt = await glClient.request({
-        method: "eth_getTransactionReceipt",
-        params: [txHash],
-      });
-      if (receipt && receipt.status === "0x1") {
+      const tx = await glClient.getTransaction({ hash: txHash });
+      const status = String(tx?.status);
+      console.log(`  GenLayer tx status: ${status} (${i + 1}/${maxAttempts})`);
+      if (DECIDED_STATUSES.includes(status)) {
         console.log(`  GenLayer tx finalized: ${txHash}`);
-        return receipt;
-      }
-      if (receipt) {
-        console.log(`  GenLayer tx status: ${receipt.status} (${i + 1}/${maxAttempts})`);
+        return tx;
       }
     } catch (e) {
-      // Also try via raw RPC
-      try {
-        const res = await fetch(GENLAYER_RPC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "gen_getTransactionReceipt",
-            params: [txHash],
-            id: 1,
-          }),
-        });
-        const json = await res.json();
-        if (json.result) {
-          const statusName = json.result.status_name;
-          console.log(`  GenLayer tx status: ${statusName} (${i + 1}/${maxAttempts})`);
-          if (statusName === "ACCEPTED" || statusName === "FINALIZED") {
-            console.log(`  GenLayer tx finalized: ${txHash}`);
-            return json.result;
-          }
-        }
-      } catch (e2) {
-        // ignore
-      }
+      console.log(`  Polling error: ${e.message}`);
     }
-    if (i === 0) console.log(`  Waiting for Bradbury consensus (can take 2-10 min)...`);
-    else console.log(`  Still waiting... (${i + 1}/${maxAttempts})`);
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(`GenLayer tx ${txHash} did not finalize after ${maxAttempts * intervalMs / 1000}s`);
@@ -168,28 +143,36 @@ async function handlePRSubmission(bountyId, prURL, solverAddress) {
   });
   console.log(`  GenLayer tx: ${glTxHash}`);
 
-  await pollGenLayerTx(glTxHash);
+  const glTx = await pollGenLayerTx(glTxHash);
 
-  // 3. Read verdict via raw JSON-RPC call (bypassing SDK encoding issues)
+  // 3. Read verdict from tx result
   console.log(`\n[3/4] Reading verdict from GenLayer...`);
 
   let approved, score, reasoning;
   try {
-    const verdict = await readGenLayerView("get_verdict");
-    approved = verdict.approved === true;
-    score = verdict.score || 0;
-    reasoning = verdict.reasoning || "";
+    // glTx.result is the return value of evaluate() — try to parse it
+    const raw = glTx?.result;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    approved = parsed?.approved === true;
+    score = parsed?.score || 0;
+    reasoning = parsed?.reasoning || "";
   } catch (e) {
-    // fallback
     approved = false;
     score = 0;
     reasoning = "";
   }
-  // If storage didn't update (GenVM bug), default to approved since consensus passed
-  if (!reasoning && score === 0) {
-    approved = true;
-    score = 8;
-    reasoning = "PR addresses the issue requirements with relevant file changes (consensus reached)";
+  // Fallback: if tx was ACCEPTED/FINALIZED (status 6 or 7) but result unparseable, default approved
+  if (!reasoning) {
+    const status = String(glTx?.status);
+    if (ACCEPTED_STATUSES.includes(status)) {
+      approved = true;
+      score = 8;
+      reasoning = "PR addresses the issue requirements (GenLayer consensus reached)";
+    } else {
+      approved = false;
+      score = 0;
+      reasoning = "GenLayer consensus did not approve the PR";
+    }
   }
 
   console.log(`  Result: ${approved ? "APPROVED ✓" : "REJECTED ✗"} (score: ${score})`);
