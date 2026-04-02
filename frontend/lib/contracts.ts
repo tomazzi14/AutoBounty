@@ -1,3 +1,4 @@
+// TODO: add validation
 import { parseAbi } from 'viem'
 import { avalancheFuji, avalanche } from 'wagmi/chains'
 
