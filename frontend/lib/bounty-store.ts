@@ -41,12 +41,15 @@ interface BountyStore {
   isSubmitting: boolean
   isEvaluating: string | null
   network: Network
+  pollingInterval: ReturnType<typeof setInterval> | null
 
   setNetwork: (network: Network) => void
   fetchBounties: () => Promise<void>
   createBounty: (input: CreateBountyInput, creatorWallet: string) => Promise<void>
   submitPR: (input: SubmitPRInput) => Promise<void>
   evaluateBounty: (bountyId: string) => Promise<void>
+  startPolling: () => void
+  stopPolling: () => void
   getAgents: () => Agent[]
   getActivityFeed: () => ActivityFeedItem[]
 }
@@ -59,10 +62,30 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   isSubmitting: false,
   isEvaluating: null,
   network: 'testnet',
+  pollingInterval: null,
 
   setNetwork: (network) => {
     set({ network, bounties: [] })
     get().fetchBounties()
+  },
+
+  startPolling: () => {
+    const interval = setInterval(() => {
+      const { bounties } = get()
+      const hasPending = bounties.some(b => b.status === 'submitted' || b.status === 'evaluating')
+      if (hasPending) {
+        get().fetchBounties()
+      }
+    }, 15000)
+    set({ pollingInterval: interval })
+  },
+
+  stopPolling: () => {
+    const { pollingInterval } = get()
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      set({ pollingInterval: null })
+    }
   },
 
   fetchBounties: async () => {
@@ -90,6 +113,11 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
         )
         return { bounties: [...fetched, ...pending] }
       })
+      // Start polling if there are submitted/evaluating bounties
+      const allBounties = get().bounties
+      const hasPending = allBounties.some(b => b.status === 'submitted' || b.status === 'evaluating')
+      if (hasPending && !get().pollingInterval) get().startPolling()
+      if (!hasPending) get().stopPolling()
     } catch (err) {
       console.error('Failed to fetch bounties:', err)
     }
