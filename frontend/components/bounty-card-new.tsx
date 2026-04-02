@@ -125,6 +125,24 @@ export default function BountyCard({ bounty }: BountyCardProps) {
           </a>
         )}
 
+        {/* Evaluating — show GenLayer tx link */}
+        {bounty.status === 'evaluating' && bounty.genLayerTxHash && (
+          <div className="rounded-lg p-3 border border-white/10 bg-white/5 text-xs">
+            <div className="flex items-center gap-1.5 mb-1.5 font-semibold text-[var(--brand-teal)]">
+              <Sparkles className="w-3 h-3 animate-pulse" />
+              GenLayer evaluating...
+            </div>
+            <a
+              href={`https://explorer-bradbury.genlayer.com/tx/${bounty.genLayerTxHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[var(--text-dim)] hover:text-white transition-colors break-all"
+            >
+              {bounty.genLayerTxHash.slice(0, 16)}…{bounty.genLayerTxHash.slice(-8)} ↗
+            </a>
+          </div>
+        )}
+
         {/* Verdict */}
         {bounty.verdict && bounty.genLayerReasoning && (
           <div className={`rounded-lg p-3 border text-xs leading-relaxed ${
@@ -135,6 +153,16 @@ export default function BountyCard({ bounty }: BountyCardProps) {
             <div className="flex items-center gap-1.5 mb-1.5 font-semibold">
               <Sparkles className="w-3 h-3" />
               GenLayer AI Verdict
+              {bounty.genLayerTxHash && (
+                <a
+                  href={`https://explorer-bradbury.genlayer.com/tx/${bounty.genLayerTxHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto font-mono text-[var(--text-dimmer)] hover:text-white transition-colors"
+                >
+                  tx ↗
+                </a>
+              )}
             </div>
             <p className="text-[var(--text-dim)] leading-relaxed">{bounty.genLayerReasoning}</p>
           </div>

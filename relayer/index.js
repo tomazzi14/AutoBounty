@@ -208,7 +208,7 @@ async function handlePRSubmission(bountyId, prURL, solverAddress) {
   console.log(`\n  Bounty #${bountyId}: ${approved ? "mUSDC sent to solver ✓" : "mUSDC returned to creator ✗"}`);
   console.log(`${"=".repeat(50)}\n`);
 
-  return { approved, score, reasoning };
+  return { approved, score, reasoning, glTxHash };
 }
 
 // --- HTTP API for frontend ---

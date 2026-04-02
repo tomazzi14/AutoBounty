@@ -172,6 +172,7 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
                 status: result.approved ? 'approved' : 'rejected',
                 verdict: result.approved ? 'approved' : 'rejected',
                 genLayerReasoning: result.reasoning || 'Evaluated by GenLayer consensus',
+                genLayerTxHash: result.glTxHash,
                 evaluatedAt: new Date(),
               }
             : b

@@ -17,6 +17,7 @@ export interface Bounty {
   submittedAt?: Date
   verdict?: 'approved' | 'rejected'
   genLayerReasoning?: string
+  genLayerTxHash?: string
   evaluatedAt?: Date
 }
 
