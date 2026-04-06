@@ -325,6 +325,38 @@ app.get("/status/:id", async (req, res) => {
   }
 });
 
+// GET /stats — aggregate bounty statistics
+app.get("/stats", async (req, res) => {
+  try {
+    const count = await publicClient.readContract({
+      address: ESCROW_CONTRACT_ADDRESS,
+      abi: ESCROW_ABI,
+      functionName: "bountyCount",
+    });
+
+    const stats = { total: 0, open: 0, submitted: 0, approved: 0, rejected: 0, totalValueLocked: BigInt(0) };
+
+    for (let i = 0; i < Number(count); i++) {
+      const b = await publicClient.readContract({
+        address: ESCROW_CONTRACT_ADDRESS,
+        abi: ESCROW_ABI,
+        functionName: "bounties",
+        args: [BigInt(i)],
+      });
+      stats.total++;
+      const statusName = ["open", "submitted", "approved", "rejected"][Number(b[6])];
+      stats[statusName]++;
+      if (statusName === "open" || statusName === "submitted") {
+        stats.totalValueLocked += BigInt(b[4]);
+      }
+    }
+
+    res.json({ ...stats, totalValueLocked: stats.totalValueLocked.toString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /health — enhanced with uptime and connectivity checks
 const startTime = Date.now();
 
