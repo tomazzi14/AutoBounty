@@ -102,6 +102,8 @@ node index.js
 
 ## Deployed Contracts
 
+> **Copy addresses:** All contract addresses are also available in machine-readable format in [`contracts.json`](./contracts.json) for easy programmatic access.
+
 ### Avalanche Mainnet
 
 | Contract | Address |
