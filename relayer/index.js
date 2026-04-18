@@ -103,6 +103,52 @@ async function readGenLayerView(functionName) {
   }
 }
 
+// --- GitHub issue validation ---
+
+function parseGithubIssueUrl(url) {
+  const match = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)$/);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2], issueNumber: parseInt(match[3], 10) };
+}
+
+async function validateGithubIssue(url) {
+  const parsed = parseGithubIssueUrl(url);
+  if (!parsed) {
+    return { valid: false, error: "Invalid GitHub issue URL format. Expected: https://github.com/owner/repo/issues/123" };
+  }
+
+  const { owner, repo, issueNumber } = parsed;
+
+  try {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+      headers: { "Accept": "application/vnd.github.v3+json" },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.status === 404) {
+      return { valid: false, error: `Issue #${issueNumber} not found in ${owner}/${repo}` };
+    }
+
+    if (!response.ok) {
+      return { valid: false, error: `GitHub API error: ${response.status}` };
+    }
+
+    const issue = await response.json();
+
+    if (issue.pull_request) {
+      return { valid: false, error: "URL points to a pull request, not an issue" };
+    }
+
+    if (issue.state !== "open") {
+      return { valid: false, error: `Issue is ${issue.state}, only open issues can have bounties` };
+    }
+
+    return { valid: true, issue: { title: issue.title, state: issue.state, owner, repo, issueNumber } };
+  } catch (err) {
+    return { valid: false, error: `Failed to validate issue: ${err.message}` };
+  }
+}
+
 // --- Core flow ---
 
 async function handlePRSubmission(bountyId, prURL, solverAddress) {
@@ -325,6 +371,16 @@ app.get("/status/:id", async (req, res) => {
   }
 });
 
+// POST /validate-issue — validate a GitHub issue URL
+app.post("/validate-issue", async (req, res) => {
+  const { issueUrl } = req.body;
+  if (!issueUrl) {
+    return res.status(400).json({ valid: false, error: "Missing issueUrl" });
+  }
+  const result = await validateGithubIssue(issueUrl);
+  res.json(result);
+});
+
 // GET /health — enhanced with uptime and connectivity checks
 const startTime = Date.now();
 
@@ -362,7 +418,7 @@ app.get("/health", async (req, res) => {
 
 // --- Exports ---
 
-export { app, rateLimitMap };
+export { app, rateLimitMap, parseGithubIssueUrl, validateGithubIssue };
 
 // --- Start ---
 
@@ -375,10 +431,11 @@ if (process.env.NODE_ENV !== "test") {
   const server = app.listen(PORT, () => {
     console.log(`API listening on http://localhost:${PORT}`);
     console.log(`\nEndpoints:`);
-    console.log(`  POST /submit      — { bountyId, prURL, solverAddress }`);
-    console.log(`  GET  /bounties    — list all bounties`);
-    console.log(`  GET  /status/:id  — bounty detail + GenLayer verdict`);
-    console.log(`  GET  /health      — check status\n`);
+    console.log(`  POST /submit         — { bountyId, prURL, solverAddress }`);
+    console.log(`  POST /validate-issue — validate GitHub issue URL`);
+    console.log(`  GET  /bounties       — list all bounties`);
+    console.log(`  GET  /status/:id     — bounty detail + GenLayer verdict`);
+    console.log(`  GET  /health         — check status\n`);
   });
 
   server.on("error", (err) => {
