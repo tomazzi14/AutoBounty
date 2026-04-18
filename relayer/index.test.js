@@ -34,7 +34,7 @@ vi.mock("viem/chains", () => ({ avalancheFuji: {}, foundry: {} }));
 vi.mock("genlayer-js", () => ({ createClient: () => mockGlClient }));
 vi.mock("genlayer-js/chains", () => ({ localnet: {}, testnetBradbury: {} }));
 
-import { app, rateLimitMap } from "./index.js";
+import { app, rateLimitMap, parseGithubIssueUrl } from "./index.js";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -416,5 +416,144 @@ describe("rate limiting on POST /submit", () => {
     expect(res.status).toBe(429);
     expect(res.headers["retry-after"]).toBeDefined();
     expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+  });
+});
+
+// ─── parseGithubIssueUrl ─────────────────────────────────────────────────────
+
+describe("parseGithubIssueUrl", () => {
+  it("parses a valid GitHub issue URL", () => {
+    const result = parseGithubIssueUrl("https://github.com/owner/repo/issues/123");
+    expect(result).toEqual({ owner: "owner", repo: "repo", issueNumber: 123 });
+  });
+
+  it("returns null for invalid URL format", () => {
+    expect(parseGithubIssueUrl("https://github.com/owner/repo")).toBeNull();
+    expect(parseGithubIssueUrl("https://github.com/owner/repo/pull/123")).toBeNull();
+    expect(parseGithubIssueUrl("not-a-url")).toBeNull();
+    expect(parseGithubIssueUrl("")).toBeNull();
+  });
+
+  it("handles http URLs", () => {
+    const result = parseGithubIssueUrl("http://github.com/owner/repo/issues/456");
+    expect(result).toEqual({ owner: "owner", repo: "repo", issueNumber: 456 });
+  });
+
+  it("returns null for URLs with trailing slash", () => {
+    expect(parseGithubIssueUrl("https://github.com/owner/repo/issues/123/")).toBeNull();
+  });
+});
+
+// ─── POST /validate-issue ────────────────────────────────────────────────────
+
+describe("POST /validate-issue", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 400 when issueUrl is missing", async () => {
+    const res = await request(app).post("/validate-issue").send({});
+    expect(res.status).toBe(400);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/missing/i);
+  });
+
+  it("returns invalid for malformed URL", async () => {
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "not-a-url" });
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/invalid.*format/i);
+  });
+
+  it("returns valid: true for open issue", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ title: "Fix bug", state: "open", pull_request: undefined }),
+    }));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(true);
+    expect(res.body.issue.title).toBe("Fix bug");
+  });
+
+  it("returns invalid for closed issue", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ title: "Closed issue", state: "closed", pull_request: undefined }),
+    }));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/closed/i);
+  });
+
+  it("returns invalid for non-existent issue (404)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+    }));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/999" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it("returns invalid when URL points to a pull request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ title: "My PR", state: "open", pull_request: { url: "..." } }),
+    }));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/pull request/i);
+  });
+
+  it("handles GitHub API errors gracefully", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/api error/i);
+  });
+
+  it("handles network errors gracefully", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
+
+    const res = await request(app)
+      .post("/validate-issue")
+      .send({ issueUrl: "https://github.com/owner/repo/issues/1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.valid).toBe(false);
+    expect(res.body.error).toMatch(/failed to validate/i);
   });
 });
