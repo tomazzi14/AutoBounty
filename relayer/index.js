@@ -272,6 +272,63 @@ app.get("/bounties", async (req, res) => {
   }
 });
 
+// GET /stats — aggregate bounty statistics
+app.get("/stats", async (req, res) => {
+  try {
+    const count = await publicClient.readContract({
+      address: ESCROW_CONTRACT_ADDRESS,
+      abi: ESCROW_ABI,
+      functionName: "bountyCount",
+    });
+
+    const stats = {
+      total: Number(count),
+      open: 0,
+      submitted: 0,
+      approved: 0,
+      rejected: 0,
+      totalValueLocked: "0",
+    };
+
+    let tvl = 0n;
+    const statusNames = ["Open", "Submitted", "Approved", "Rejected"];
+
+    for (let i = 0; i < Number(count); i++) {
+      const b = await publicClient.readContract({
+        address: ESCROW_CONTRACT_ADDRESS,
+        abi: ESCROW_ABI,
+        functionName: "bounties",
+        args: [BigInt(i)],
+      });
+      const statusCode = Number(b[6]);
+      const statusName = statusNames[statusCode];
+      const amount = b[4];
+
+      switch (statusName) {
+        case "Open":
+          stats.open++;
+          tvl += amount;
+          break;
+        case "Submitted":
+          stats.submitted++;
+          tvl += amount;
+          break;
+        case "Approved":
+          stats.approved++;
+          break;
+        case "Rejected":
+          stats.rejected++;
+          break;
+      }
+    }
+
+    stats.totalValueLocked = tvl.toString();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /status/:id — detailed bounty status with GenLayer verdict
 app.get("/status/:id", async (req, res) => {
   try {
@@ -376,8 +433,9 @@ if (process.env.NODE_ENV !== "test") {
     console.log(`API listening on http://localhost:${PORT}`);
     console.log(`\nEndpoints:`);
     console.log(`  POST /submit      — { bountyId, prURL, solverAddress }`);
-    console.log(`  GET  /bounties    — list all bounties`);
-    console.log(`  GET  /status/:id  — bounty detail + GenLayer verdict`);
+    console.log(`  GET  /bounties       — list all bounties`);
+    console.log(`  GET  /stats          — aggregate bounty statistics`);
+    console.log(`  GET  /status/:id     — bounty detail + GenLayer verdict`);
     console.log(`  GET  /health      — check status\n`);
   });
 

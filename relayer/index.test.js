@@ -167,6 +167,84 @@ describe("GET /bounties", () => {
   });
 });
 
+// ─── GET /stats ────────────────────────────────────────────────────────────────
+
+describe("GET /stats", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns zeroed stats when no bounties exist", async () => {
+    mockPublicClient.readContract.mockResolvedValueOnce(BigInt(0));
+
+    const res = await request(app).get("/stats");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      total: 0,
+      open: 0,
+      submitted: 0,
+      approved: 0,
+      rejected: 0,
+      totalValueLocked: "0",
+    });
+  });
+
+  it("returns correct counts for mixed statuses", async () => {
+    const openBounty = [...BOUNTY_TUPLE]; // status 0 = Open
+    const submittedBounty = [...BOUNTY_TUPLE];
+    submittedBounty[0] = BigInt(1);
+    submittedBounty[6] = 1; // Submitted
+    const approvedBounty = [...BOUNTY_TUPLE];
+    approvedBounty[0] = BigInt(2);
+    approvedBounty[6] = 2; // Approved
+    const rejectedBounty = [...BOUNTY_TUPLE];
+    rejectedBounty[0] = BigInt(3);
+    rejectedBounty[6] = 3; // Rejected
+
+    mockPublicClient.readContract
+      .mockResolvedValueOnce(BigInt(4)) // bountyCount
+      .mockResolvedValueOnce(openBounty)
+      .mockResolvedValueOnce(submittedBounty)
+      .mockResolvedValueOnce(approvedBounty)
+      .mockResolvedValueOnce(rejectedBounty);
+
+    const res = await request(app).get("/stats");
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(4);
+    expect(res.body.open).toBe(1);
+    expect(res.body.submitted).toBe(1);
+    expect(res.body.approved).toBe(1);
+    expect(res.body.rejected).toBe(1);
+  });
+
+  it("calculates totalValueLocked from Open + Submitted only", async () => {
+    const openBounty = [...BOUNTY_TUPLE]; // amount = 500e6
+    const approvedBounty = [...BOUNTY_TUPLE];
+    approvedBounty[0] = BigInt(1);
+    approvedBounty[4] = BigInt(300e6);
+    approvedBounty[6] = 2; // Approved
+
+    mockPublicClient.readContract
+      .mockResolvedValueOnce(BigInt(2))
+      .mockResolvedValueOnce(openBounty)
+      .mockResolvedValueOnce(approvedBounty);
+
+    const res = await request(app).get("/stats");
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalValueLocked).toBe("500000000"); // only Open bounty amount
+  });
+
+  it("returns 500 on RPC error", async () => {
+    mockPublicClient.readContract.mockRejectedValue(new Error("RPC down"));
+
+    const res = await request(app).get("/stats");
+
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty("error");
+  });
+});
+
 // ─── GET /status/:id ──────────────────────────────────────────────────────────
 
 describe("GET /status/:id", () => {
